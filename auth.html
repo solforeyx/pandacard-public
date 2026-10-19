@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#FFD700" />
+  <title>Panda Card — Sign In</title>
+  <meta name="description" content="Panda Card. Trade Smart. Stay Cute. Create your account or log in." />
+  <link rel="icon" type="image/png" href="https://i.imgur.com/9aLmHyS.png" />
+  <link rel="apple-touch-icon" href="https://i.imgur.com/9aLmHyS.png" />
+  <link rel="manifest" href="manifest.json" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .auth-page {
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+      min-height: 100vh;
+      background: #F8F8FC;
+    }
+    body.dark-mode .auth-page { background: #0D0D1A; }
+
+    .mode-picker {
+      display: flex;
+      gap: 8px;
+      background: #F0F0F5;
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 16px;
+    }
+    body.dark-mode .mode-picker { background: #2D2D44; }
+
+    .mode-picker button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      background: transparent;
+      color: #888;
+      cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .mode-picker button .material-icons { font-size: 16px; }
+    .mode-picker button.active {
+      background: #FFD700;
+      color: #1A1A2E;
+      box-shadow: 0 2px 8px rgba(255,215,0,0.3);
+    }
+    .mode-picker button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .live-notice {
+      background: rgba(255,215,0,0.1);
+      border: 1px solid #FFD700;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 13px;
+      color: #1A1A2E;
+      line-height: 1.5;
+    }
+    body.dark-mode .live-notice { color: #FFFFFF; }
+    .live-notice .material-icons {
+      color: #FFD700;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .password-wrapper {
+      position: relative;
+    }
+    .password-wrapper .toggle-visibility {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #999;
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+    }
+    .password-wrapper .toggle-visibility .material-icons {
+      font-size: 20px;
+    }
+    .password-wrapper input {
+      padding-right: 44px;
+    }
+
+    .password-strength {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .password-strength .bar {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: #e8e8e8;
+      transition: background 0.2s;
+    }
+    .password-strength .bar.filled-weak { background: #FF4444; }
+    .password-strength .bar.filled-medium { background: #FFD700; }
+    .password-strength .bar.filled-strong { background: #22C55E; }
+
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.4;
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      margin-top: 2px;
+      accent-color: #FFD700;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .checkbox-row a { color: #FFD700; font-weight: 600; text-decoration: none; }
+
+    .form-section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+      font-weight: 700;
+      margin: 20px 0 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    body.dark-mode .form-section-label { border-color: #2D2D44; }
+
+    .review-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .review-modal.open { display: flex; }
+
+    .review-content {
+      background: #FFFFFF;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 420px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    body.dark-mode .review-content { background: #1A1A2E; color: #FFFFFF; }
+
+    .review-content h2 {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .review-content .warning-box {
+      background: rgba(255,68,68,0.1);
+      border: 1px solid #FF4444;
+      color: #FF4444;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .review-content .review-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 14px;
+    }
+    body.dark-mode .review-content .review-row { border-color: #2D2D44; }
+    .review-content .review-row:last-of-type { border-bottom: none; }
+    .review-content .review-row .label { color: #999; }
+    .review-content .review-row .value { font-weight: 700; text-align: right; max-width: 60%; }
+
+    .review-content .modal-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .review-content .modal-buttons button {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 50px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .review-content .modal-buttons .btn-back {
+      background: transparent;
+      border: 2px solid #e0e0e0;
+      color: #1A1A2E;
+    }
+    body.dark-mode .review-content .modal-buttons .btn-back {
+      color: #FFFFFF;
+      border-color: #2D2D44;
+    }
+    .review-content .modal-buttons .btn-confirm {
+      background: #FFD700;
+      color: #1A1A2E;
+    }
+
+    .google-btn {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #e8e8e8;
+      border-radius: 12px;
+      background: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1A1A2E;
+      cursor: pointer;
+      margin-top: 16px;
+      font-family: 'Poppins', sans-serif;
+      transition: background 0.2s;
+    }
+    .google-btn:hover { background: #f5f5f5; }
+    body.dark-mode .google-btn {
+      background: #1A1A2E;
+      border-color: #2D2D44;
+      color: #FFFFFF;
+    }
+    .google-btn svg { width: 20px; height: 20px; }
+
+    .splash-auth {
+      position: fixed;
+      inset: 0;
+      background: #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 99999;
+      transition: opacity 0.5s ease;
+    }
+    body.dark-mode .splash-auth { background: #0D0D1A; }
+    .splash-auth.hide { opacity: 0; pointer-events: none; }
+    .splash-auth img {
+      width: 90px;
+      height: 90px;
+      object-fit: contain;
+      margin-bottom: 16px;
+      animation: splashPulse 1.8s ease-in-out infinite;
+    }
+    .splash-auth h1 {
+      font-size: 28px;
+      font-weight: 900;
+      color: #1A1A2E;
+      letter-spacing: -1px;
+    }
+    body.dark-mode .splash-auth h1 { color: #FFFFFF; }
+    .splash-auth h1 span { color: #FFD700; }
+    .splash-auth .tagline {
+      font-size: 13px;
+      color: #999;
+      margin-top: 4px;
+      letter-spacing: 0.3px;
+    }
+    .splash-auth .owner {
+      font-size: 11px;
+      color: #ccc;
+      margin-top: 16px;
+      font-weight: 500;
+    }
+    @keyframes splashPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- SPLASH -->
+  <div class="splash-auth" id="splashAuth">
+    <img src="https://i.imgur.com/9aLmHyS.png" alt="Panda Card" />
+    <h1>Panda<span>Card</span></h1>
+    <div class="tagline">Trade Smart. Stay Cute.</div>
+    <div class="owner">by Solforeyx</div>
+  </div>
+
+  <!-- LOADING OVERLAY -->
+  <div class="loading-overlay hide" id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading...</div>
+  </div>
+
+  <!-- AUTH PAGE -->
+  <div class="auth-page">
+    <div class="auth-header">
+      <img src="https://i.imgur.com/9aLmHyS.png" alt="Panda Card" class="logo-img" />
+      <h1>Panda<span class="highlight">Card</span></h1>
+      <p>Trade Smart. Stay Cute.</p>
+    </div>
+
+    <!-- MODE PICKER -->
+    <div class="mode-picker" id="modePicker">
+      <button data-mode="demo" class="active" onclick="selectMode('demo')">
+        <span class="material-icons">science</span>
+        Demo Mode
+      </button>
+      <button data-mode="live" onclick="selectMode('live')">
+        <span class="material-icons">verified</span>
+        Live Mode
+      </button>
+    </div>
+
+    <!-- LIVE UNAVAILABLE -->
+    <div class="live-notice" id="liveNotice" style="display:none;">
+      <span class="material-icons">info</span>
+      <div>
+        Live mode is not yet open for public signup. You can explore the app in Demo Mode in the meantime. Live features will open soon.
+      </div>
+    </div>
+
+    <!-- AUTH TABS -->
+    <div class="tabs" id="authTabs">
+      <button class="tab-btn active" data-tab="signup" onclick="switchTab('signup')">Sign Up</button>
+      <button class="tab-btn" data-tab="login" onclick="switchTab('login')">Log In</button>
+      <button class="tab-btn" data-tab="reset" onclick="switchTab('reset')">Reset</button>
+    </div>
+
+    <!-- SIGNUP -->
+    <div class="tab-content active" id="tab-signup">
+      <form id="signupForm" novalidate>
+        <div class="form-section-label">Account Information</div>
+
+        <div class="form-group">
+          <label>Full Name</label>
+          <div class="input-wrapper">
+            <span class="material-icons">person</span>
+            <input type="text" id="signupName" placeholder="Your full legal name" autocomplete="name" />
+          </div>
+          <div class="error-text" id="err-signupName"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Email Address</label>
+          <div class="input-wrapper">
+            <span class="material-icons">email</span>
+            <input type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email" />
+          </div>
+          <div class="error-text" id="err-signupEmail"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Username</label>
+          <div class="input-wrapper">
+            <span class="material-icons">alternate_email</span>
+            <input type="text" id="signupUsername" placeholder="3-30 chars, letters/numbers/_" autocomplete="username" />
+          </div>
+          <div style="font-size:11px;color:#999;margin-top:4px;">3-30 characters. No spaces. Letters, numbers and underscore only.</div>
+          <div class="error-text" id="err-signupUsername"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Password</label>
+          <div class="input-wrapper password-wrapper">
+            <span class="material-icons">lock</span>
+            <input type="password" id="signupPassword" placeholder="8+ chars with upper, lower, digit, symbol" autocomplete="new-password" />
+            <button type="button" class="toggle-visibility" onclick="togglePwd('signupPassword', this)">
+              <span class="material-icons">visibility</span>
+            </button>
+          </div>
+          <div class="password-strength" id="pwdStrength">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+          <div class="error-text" id="err-signupPassword"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <div class="input-wrapper password-wrapper">
+            <span class="material-icons">lock_outline</span>
+            <input type="password" id="signupConfirmPassword" placeholder="Re-enter password" autocomplete="new-password" />
+            <button type="button" class="toggle-visibility" onclick="togglePwd('signupConfirmPassword', this)">
+              <span class="material-icons">visibility</span>
+            </button>
+          </div>
+          <div class="error-text" id="err-signupConfirmPassword"></div>
+        </div>
+
+        <div class="form-section-label">Personal Details</div>
+
+        <div class="form-group">
+          <label>Country</label>
+          <div class="input-wrapper">
+            <span class="material-icons">public</span>
+            <select id="signupCountry" class="country-selector" onchange="onCountryChange()">
+              <option value="">Select your country</option>
+            </select>
+          </div>
+          <div class="error-text" id="err-signupCountry"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Date of Birth</label>
+          <div class="input-wrapper">
+            <span class="material-icons">cake</span>
+            <input type="date" id="signupDob" />
+          </div>
+          <div class="error-text" id="err-signupDob"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Phone Number <span style="color:#999;font-weight:400;">(optional)</span></label>
+          <div class="input-wrapper">
+            <span class="material-icons">phone</span>
+            <input type="tel" id="signupPhone" placeholder="+234..." autocomplete="tel" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Address <span style="color:#999;font-weight:400;">(optional)</span></label>
+          <div class="input-wrapper">
+            <span class="material-icons">home</span>
+            <input type="text" id="signupAddress" placeholder="Street, city" autocomplete="street-address" />
+          </div>
+        </div>
+
+        <div class="form-section-label">Referral</div>
+
+        <div class="form-group">
+          <label>Referral Code <span style="color:#999;font-weight:400;">(optional)</span></label>
+          <div class="input-wrapper">
+            <span class="material-icons">card_giftcard</span>
+            <input type="text" id="signupReferral" placeholder="Enter code if you have one" />
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="signupTerms" />
+          <label for="signupTerms">
+            I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a>
+            and <a href="privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>.
+          </label>
+        </div>
+        <div class="error-text" id="err-signupTerms"></div>
+
+        <button type="submit" class="btn-primary" id="signupSubmit" style="margin-top:16px;">
+          <span class="material-icons">rocket_launch</span>
+          Create Account
+        </button>
+      </form>
+
+      <div id="googleSignup" style="display:none;">
+        <div class="social-divider">
+          <div class="line"></div>
+          <div class="text">OR</div>
+          <div class="line"></div>
+        </div>
+        <button class="google-btn" onclick="handleGoogleSignIn()">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#EA4335" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+            <path fill="#4285F4" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#34A853" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Continue with Google
+        </button>
+      </div>
+
+      <div class="auth-footer" style="margin-top:20px;">
+        Already have an account? <a onclick="switchTab('login')">Log In</a>
+      </div>
+    </div>
+
+    <!-- LOGIN -->
+    <div class="tab-content" id="tab-login">
+      <form id="loginForm" novalidate>
+        <div class="form-group">
+          <label>Email Address</label>
+          <div class="input-wrapper">
+            <span class="material-icons">email</span>
+            <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email" />
+          </div>
+          <div class="error-text" id="err-loginEmail"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Password</label>
+          <div class="input-wrapper password-wrapper">
+            <span class="material-icons">lock</span>
+            <input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password" />
+            <button type="button" class="toggle-visibility" onclick="togglePwd('loginPassword', this)">
+              <span class="material-icons">visibility</span>
+            </button>
+          </div>
+          <div class="error-text" id="err-loginPassword"></div>
+        </div>
+
+        <div class="forgot-link">
+          <a onclick="switchTab('reset')">Forgot password?</a>
+        </div>
+
+        <button type="submit" class="btn-primary" id="loginSubmit" style="margin-top:16px;">
+          <span class="material-icons">login</span>
+          Log In
+        </button>
+      </form>
+
+      <div id="googleLogin" style="display:none;">
+        <div class="social-divider">
+          <div class="line"></div>
+          <div class="text">OR</div>
+          <div class="line"></div>
+        </div>
+        <button class="google-btn" onclick="handleGoogleSignIn()">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#EA4335" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+            <path fill="#4285F4" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#34A853" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Continue with Google
+        </button>
+      </div>
+
+      <div class="auth-footer" style="margin-top:20px;">
+        Don't have an account? <a onclick="switchTab('signup')">Sign Up</a>
+      </div>
+    </div>
+
+    <!-- RESET -->
+    <div class="tab-content" id="tab-reset">
+      <p style="color:#666;font-size:14px;margin-bottom:20px;text-align:center;line-height:1.6;">
+        Enter your registered email and we'll send you a reset link.
+      </p>
+
+      <form id="resetForm" novalidate>
+        <div class="form-group">
+          <label>Email Address</label>
+          <div class="input-wrapper">
+            <span class="material-icons">email</span>
+            <input type="email" id="resetEmail" placeholder="you@example.com" autocomplete="email" />
+          </div>
+          <div class="error-text" id="err-resetEmail"></div>
+        </div>
+
+        <button type="submit" class="btn-primary" id="resetSubmit">
+          <span class="material-icons">send</span>
+          Send Reset Link
+        </button>
+      </form>
+
+      <div class="auth-footer" style="margin-top:20px;">
+        Remember your password? <a onclick="switchTab('login')">Log In</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- REVIEW MODAL (signup confirmation) -->
+  <div class="review-modal" id="reviewModal">
+    <div class="review-content">
+      <h2>Confirm Your Details</h2>
+      <div class="warning-box">
+        These details cannot be changed after account creation. Please check carefully.
+      </div>
+      <div class="review-row">
+        <span class="label">Full Name</span>
+        <span class="value" id="reviewName"></span>
+      </div>
+      <div class="review-row">
+        <span class="label">Username</span>
+        <span class="value" id="reviewUsername"></span>
+      </div>
+      <div class="review-row">
+        <span class="label">Country</span>
+        <span class="value" id="reviewCountry"></span>
+      </div>
+      <div class="review-row">
+        <span class="label">Date of Birth</span>
+        <span class="value" id="reviewDob"></span>
+      </div>
+      <div class="review-row">
+        <span class="label">Email</span>
+        <span class="value" id="reviewEmail"></span>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-back" onclick="closeReview()">Go Back</button>
+        <button class="btn-confirm" onclick="confirmSignup()">Confirm &amp; Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILE COMPLETION MODAL (Google users) -->
+  <div class="review-modal" id="profileModal">
+    <div class="review-content">
+      <h2>Complete Your Profile</h2>
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">
+        Choose a username and country to finish setting up your account.
+      </p>
+      <div class="form-group">
+        <label>Username</label>
+        <div class="input-wrapper">
+          <span class="material-icons">alternate_email</span>
+          <input type="text" id="googleUsername" placeholder="3-30 chars" />
+        </div>
+        <div class="error-text" id="err-googleUsername"></div>
+      </div>
+      <div class="form-group">
+        <label>Country</label>
+        <div class="input-wrapper">
+          <span class="material-icons">public</span>
+          <select id="googleCountry" class="country-selector">
+            <option value="">Select your country</option>
+          </select>
+        </div>
+        <div class="error-text" id="err-googleCountry"></div>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-back" onclick="logoutGoogleIncomplete()">Cancel</button>
+        <button class="btn-confirm" onclick="saveGoogleProfile()">Finish Setup</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // ============================================================
+    // CONSTANTS
+    // ============================================================
+    var COUNTRIES = [
+      {n:"Afghanistan",c:"AF",cur:"AFN",s:"؋"},
+      {n:"Albania",c:"AL",cur:"ALL",s:"L"},
+      {n:"Algeria",c:"DZ",cur:"DZD",s:"د.ج"},
+      {n:"Andorra",c:"AD",cur:"EUR",s:"€"},
+      {n:"Angola",c:"AO",cur:"AOA",s:"Kz"},
+      {n:"Antigua and Barbuda",c:"AG",cur:"XCD",s:"$"},
+      {n:"Argentina",c:"AR",cur:"ARS",s:"$"},
+      {n:"Armenia",c:"AM",cur:"AMD",s:"֏"},
+      {n:"Australia",c:"AU",cur:"AUD",s:"A$"},
+      {n:"Austria",c:"AT",cur:"EUR",s:"€"},
+      {n:"Azerbaijan",c:"AZ",cur:"AZN",s:"₼"},
+      {n:"Bahamas",c:"BS",cur:"BSD",s:"$"},
+      {n:"Bahrain",c:"BH",cur:"BHD",s:"د.ب"},
+      {n:"Bangladesh",c:"BD",cur:"BDT",s:"৳"},
+      {n:"Barbados",c:"BB",cur:"BBD",s:"$"},
+      {n:"Belarus",c:"BY",cur:"BYN",s:"Br"},
+      {n:"Belgium",c:"BE",cur:"EUR",s:"€"},
+      {n:"Belize",c:"BZ",cur:"BZD",s:"$"},
+      {n:"Benin",c:"BJ",cur:"XOF",s:"CFA"},
+      {n:"Bhutan",c:"BT",cur:"BTN",s:"Nu."},
+      {n:"Bolivia",c:"BO",cur:"BOB",s:"Bs."},
+      {n:"Bosnia and Herzegovina",c:"BA",cur:"BAM",s:"KM"},
+      {n:"Botswana",c:"BW",cur:"BWP",s:"P"},
+      {n:"Brazil",c:"BR",cur:"BRL",s:"R$"},
+      {n:"Brunei",c:"BN",cur:"BND",s:"$"},
+      {n:"Bulgaria",c:"BG",cur:"BGN",s:"лв"},
+      {n:"Burkina Faso",c:"BF",cur:"XOF",s:"CFA"},
+      {n:"Burundi",c:"BI",cur:"BIF",s:"FBu"},
+      {n:"Cabo Verde",c:"CV",cur:"CVE",s:"$"},
+      {n:"Cambodia",c:"KH",cur:"KHR",s:"៛"},
+      {n:"Cameroon",c:"CM",cur:"XAF",s:"FCFA"},
+      {n:"Canada",c:"CA",cur:"CAD",s:"C$"},
+      {n:"Central African Republic",c:"CF",cur:"XAF",s:"FCFA"},
+      {n:"Chad",c:"TD",cur:"XAF",s:"FCFA"},
+      {n:"Chile",c:"CL",cur:"CLP",s:"$"},
+      {n:"China",c:"CN",cur:"CNY",s:"¥"},
+      {n:"Colombia",c:"CO",cur:"COP",s:"$"},
+      {n:"Comoros",c:"KM",cur:"KMF",s:"CF"},
+      {n:"Congo (Brazzaville)",c:"CG",cur:"XAF",s:"FCFA"},
+      {n:"Congo (DRC)",c:"CD",cur:"CDF",s:"FC"},
+      {n:"Costa Rica",c:"CR",cur:"CRC",s:"₡"},
+      {n:"Côte d'Ivoire",c:"CI",cur:"XOF",s:"CFA"},
+      {n:"Croatia",c:"HR",cur:"EUR",s:"€"},
+      {n:"Cuba",c:"CU",cur:"CUP",s:"$"},
+      {n:"Cyprus",c:"CY",cur:"EUR",s:"€"},
+      {n:"Czechia",c:"CZ",cur:"CZK",s:"Kč"},
+      {n:"Denmark",c:"DK",cur:"DKK",s:"kr"},
+      {n:"Djibouti",c:"DJ",cur:"DJF",s:"Fdj"},
+      {n:"Dominica",c:"DM",cur:"XCD",s:"$"},
+      {n:"Dominican Republic",c:"DO",cur:"DOP",s:"$"},
+      {n:"Ecuador",c:"EC",cur:"USD",s:"$"},
+      {n:"Egypt",c:"EG",cur:"EGP",s:"E£"},
+      {n:"El Salvador",c:"SV",cur:"USD",s:"$"},
+      {n:"Equatorial Guinea",c:"GQ",cur:"XAF",s:"FCFA"},
+      {n:"Eritrea",c:"ER",cur:"ERN",s:"Nfk"},
+      {n:"Estonia",c:"EE",cur:"EUR",s:"€"},
+      {n:"Eswatini",c:"SZ",cur:"SZL",s:"E"},
+      {n:"Ethiopia",c:"ET",cur:"ETB",s:"Br"},
+      {n:"Fiji",c:"FJ",cur:"FJD",s:"$"},
+      {n:"Finland",c:"FI",cur:"EUR",s:"€"},
+      {n:"France",c:"FR",cur:"EUR",s:"€"},
+      {n:"Gabon",c:"GA",cur:"XAF",s:"FCFA"},
+      {n:"Gambia",c:"GM",cur:"GMD",s:"D"},
+      {n:"Georgia",c:"GE",cur:"GEL",s:"₾"},
+      {n:"Germany",c:"DE",cur:"EUR",s:"€"},
+      {n:"Ghana",c:"GH",cur:"GHS",s:"₵"},
+      {n:"Greece",c:"GR",cur:"EUR",s:"€"},
+      {n:"Grenada",c:"GD",cur:"XCD",s:"$"},
+      {n:"Guatemala",c:"GT",cur:"GTQ",s:"Q"},
+      {n:"Guinea",c:"GN",cur:"GNF",s:"FG"},
+      {n:"Guinea-Bissau",c:"GW",cur:"XOF",s:"CFA"},
+      {n:"Guyana",c:"GY",cur:"GYD",s:"$"},
+      {n:"Haiti",c:"HT",cur:"HTG",s:"G"},
+      {n:"Honduras",c:"HN",cur:"HNL",s:"L"},
+      {n:"Hungary",c:"HU",cur:"HUF",s:"Ft"},
+      {n:"Iceland",c:"IS",cur:"ISK",s:"kr"},
+      {n:"India",c:"IN",cur:"INR",s:"₹"},
+      {n:"Indonesia",c:"ID",cur:"IDR",s:"Rp"},
+      {n:"Iran",c:"IR",cur:"IRR",s:"﷼"},
+      {n:"Iraq",c:"IQ",cur:"IQD",s:"ع.د"},
+      {n:"Ireland",c:"IE",cur:"EUR",s:"€"},
+      {n:"Israel",c:"IL",cur:"ILS",s:"₪"},
+      {n:"Italy",c:"IT",cur:"EUR",s:"€"},
+      {n:"Jamaica",c:"JM",cur:"JMD",s:"J$"},
+      {n:"Japan",c:"JP",cur:"JPY",s:"¥"},
+      {n:"Jordan",c:"JO",cur:"JOD",s:"د.ا"},
+      {n:"Kazakhstan",c:"KZ",cur:"KZT",s:"₸"},
+      {n:"Kenya",c:"KE",cur:"KES",s:"KSh"},
+      {n:"Kiribati",c:"KI",cur:"AUD",s:"$"},
+      {n:"Kuwait",c:"KW",cur:"KWD",s:"د.ك"},
+      {n:"Kyrgyzstan",c:"KG",cur:"KGS",s:"с"},
+      {n:"Laos",c:"LA",cur:"LAK",s:"₭"},
+      {n:"Latvia",c:"LV",cur:"EUR",s:"€"},
+      {n:"Lebanon",c:"LB",cur:"LBP",s:"ل.ل"},
+      {n:"Lesotho",c:"LS",cur:"LSL",s:"L"},
+      {n:"Liberia",c:"LR",cur:"LRD",s:"$"},
+      {n:"Libya",c:"LY",cur:"LYD",s:"ل.د"},
+      {n:"Liechtenstein",c:"LI",cur:"CHF",s:"CHF"},
+      {n:"Lithuania",c:"LT",cur:"EUR",s:"€"},
+      {n:"Luxembourg",c:"LU",cur:"EUR",s:"€"},
+      {n:"Madagascar",c:"MG",cur:"MGA",s:"Ar"},
+      {n:"Malawi",c:"MW",cur:"MWK",s:"MK"},
+      {n:"Malaysia",c:"MY",cur:"MYR",s:"RM"},
+      {n:"Maldives",c:"MV",cur:"MVR",s:"Rf"},
+      {n:"Mali",c:"ML",cur:"XOF",s:"CFA"},
+      {n:"Malta",c:"MT",cur:"EUR",s:"€"},
+      {n:"Marshall Islands",c:"MH",cur:"USD",s:"$"},
+      {n:"Mauritania",c:"MR",cur:"MRU",s:"UM"},
+      {n:"Mauritius",c:"MU",cur:"MUR",s:"₨"},
+      {n:"Mexico",c:"MX",cur:"MXN",s:"$"},
+      {n:"Micronesia",c:"FM",cur:"USD",s:"$"},
+      {n:"Moldova",c:"MD",cur:"MDL",s:"L"},
+      {n:"Monaco",c:"MC",cur:"EUR",s:"€"},
+      {n:"Mongolia",c:"MN",cur:"MNT",s:"₮"},
+      {n:"Montenegro",c:"ME",cur:"EUR",s:"€"},
+      {n:"Morocco",c:"MA",cur:"MAD",s:"DH"},
+      {n:"Mozambique",c:"MZ",cur:"MZN",s:"MT"},
+      {n:"Myanmar",c:"MM",cur:"MMK",s:"K"},
+      {n:"Namibia",c:"NA",cur:"NAD",s:"$"},
+      {n:"Nauru",c:"NR",cur:"AUD",s:"$"},
+      {n:"Nepal",c:"NP",cur:"NPR",s:"₨"},
+      {n:"Netherlands",c:"NL",cur:"EUR",s:"€"},
+      {n:"New Zealand",c:"NZ",cur:"NZD",s:"$"},
+      {n:"Nicaragua",c:"NI",cur:"NIO",s:"C$"},
+      {n:"Niger",c:"NE",cur:"XOF",s:"CFA"},
+      {n:"Nigeria",c:"NG",cur:"NGN",s:"₦"},
+      {n:"North Korea",c:"KP",cur:"KPW",s:"₩"},
+      {n:"North Macedonia",c:"MK",cur:"MKD",s:"ден"},
+      {n:"Norway",c:"NO",cur:"NOK",s:"kr"},
+      {n:"Oman",c:"OM",cur:"OMR",s:"ر.ع."},
+      {n:"Pakistan",c:"PK",cur:"PKR",s:"₨"},
+      {n:"Palau",c:"PW",cur:"USD",s:"$"},
+      {n:"Palestine",c:"PS",cur:"ILS",s:"₪"},
+      {n:"Panama",c:"PA",cur:"PAB",s:"B/."},
+      {n:"Papua New Guinea",c:"PG",cur:"PGK",s:"K"},
+      {n:"Paraguay",c:"PY",cur:"PYG",s:"₲"},
+      {n:"Peru",c:"PE",cur:"PEN",s:"S/"},
+      {n:"Philippines",c:"PH",cur:"PHP",s:"₱"},
+      {n:"Poland",c:"PL",cur:"PLN",s:"zł"},
+      {n:"Portugal",c:"PT",cur:"EUR",s:"€"},
+      {n:"Qatar",c:"QA",cur:"QAR",s:"ر.ق"},
+      {n:"Romania",c:"RO",cur:"RON",s:"lei"},
+      {n:"Russia",c:"RU",cur:"RUB",s:"₽"},
+      {n:"Rwanda",c:"RW",cur:"RWF",s:"FRw"},
+      {n:"Saint Kitts and Nevis",c:"KN",cur:"XCD",s:"$"},
+      {n:"Saint Lucia",c:"LC",cur:"XCD",s:"$"},
+      {n:"Saint Vincent and the Grenadines",c:"VC",cur:"XCD",s:"$"},
+      {n:"Samoa",c:"WS",cur:"WST",s:"T"},
+      {n:"San Marino",c:"SM",cur:"EUR",s:"€"},
+      {n:"Sao Tome and Principe",c:"ST",cur:"STN",s:"Db"},
+      {n:"Saudi Arabia",c:"SA",cur:"SAR",s:"ر.س"},
+      {n:"Senegal",c:"SN",cur:"XOF",s:"CFA"},
+      {n:"Serbia",c:"RS",cur:"RSD",s:"дин"},
+      {n:"Seychelles",c:"SC",cur:"SCR",s:"₨"},
+      {n:"Sierra Leone",c:"SL",cur:"SLE",s:"Le"},
+      {n:"Singapore",c:"SG",cur:"SGD",s:"S$"},
+      {n:"Slovakia",c:"SK",cur:"EUR",s:"€"},
+      {n:"Slovenia",c:"SI",cur:"EUR",s:"€"},
+      {n:"Solomon Islands",c:"SB",cur:"SBD",s:"$"},
+      {n:"Somalia",c:"SO",cur:"SOS",s:"Sh"},
+      {n:"South Africa",c:"ZA",cur:"ZAR",s:"R"},
+      {n:"South Korea",c:"KR",cur:"KRW",s:"₩"},
+      {n:"South Sudan",c:"SS",cur:"SSP",s:"£"},
+      {n:"Spain",c:"ES",cur:"EUR",s:"€"},
+      {n:"Sri Lanka",c:"LK",cur:"LKR",s:"Rs"},
+      {n:"Sudan",c:"SD",cur:"SDG",s:"ج.س."},
+      {n:"Suriname",c:"SR",cur:"SRD",s:"$"},
+      {n:"Sweden",c:"SE",cur:"SEK",s:"kr"},
+      {n:"Switzerland",c:"CH",cur:"CHF",s:"CHF"},
+      {n:"Syria",c:"SY",cur:"SYP",s:"£"},
+      {n:"Taiwan",c:"TW",cur:"TWD",s:"NT$"},
+      {n:"Tajikistan",c:"TJ",cur:"TJS",s:"SM"},
+      {n:"Tanzania",c:"TZ",cur:"TZS",s:"TSh"},
+      {n:"Thailand",c:"TH",cur:"THB",s:"฿"},
+      {n:"Timor-Leste",c:"TL",cur:"USD",s:"$"},
+      {n:"Togo",c:"TG",cur:"XOF",s:"CFA"},
+      {n:"Tonga",c:"TO",cur:"TOP",s:"T$"},
+      {n:"Trinidad and Tobago",c:"TT",cur:"TTD",s:"$"},
+      {n:"Tunisia",c:"TN",cur:"TND",s:"د.ت"},
+      {n:"Turkey",c:"TR",cur:"TRY",s:"₺"},
+      {n:"Turkmenistan",c:"TM",cur:"TMT",s:"m"},
+      {n:"Tuvalu",c:"TV",cur:"AUD",s:"$"},
+      {n:"Uganda",c:"UG",cur:"UGX",s:"USh"},
+      {n:"Ukraine",c:"UA",cur:"UAH",s:"₴"},
+      {n:"United Arab Emirates",c:"AE",cur:"AED",s:"د.إ"},
+      {n:"United Kingdom",c:"GB",cur:"GBP",s:"£"},
+      {n:"United States",c:"US",cur:"USD",s:"$"},
+      {n:"Uruguay",c:"UY",cur:"UYU",s:"$"},
+      {n:"Uzbekistan",c:"UZ",cur:"UZS",s:"so'm"},
+      {n:"Vanuatu",c:"VU",cur:"VUV",s:"VT"},
+      {n:"Vatican City",c:"VA",cur:"EUR",s:"€"},
+      {n:"Venezuela",c:"VE",cur:"VES",s:"Bs."},
+      {n:"Vietnam",c:"VN",cur:"VND",s:"₫"},
+      {n:"Yemen",c:"YE",cur:"YER",s:"﷼"},
+      {n:"Zambia",c:"ZM",cur:"ZMW",s:"ZK"},
+      {n:"Zimbabwe",c:"ZW",cur:"ZWL",s:"$"}
+    ];
+
+    // ============================================================
+    // STATE
+    // ============================================================
+    var currentMode = 'demo';
+    var livePublished = false;
+    var pendingSignup = null;
+    var pendingGoogleUser = null;
+
+    // ============================================================
+    // INIT
+    // ============================================================
+    async function init() {
+      populateCountries();
+
+      // check live publish status
+      try { livePublished = await checkLivePublished(); }
+      catch (e) { livePublished = false; }
+
+      // read stored mode
+      currentMode = getMode();
+
+      // if user is already logged in, redirect
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          window.location.href = 'app.html';
+          return;
+        }
+      } catch (e) { /* ignore */ }
+
+      updateModeUI();
+
+      // prefill referral
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      if (ref) {
+        const refInput = document.getElementById('signupReferral');
+        if (refInput) refInput.value = ref;
+      }
+
+      // hide splash
+      setTimeout(function () {
+        const splash = document.getElementById('splashAuth');
+        if (splash) {
+          splash.classList.add('hide');
+          setTimeout(function () { splash.style.display = 'none'; }, 500);
+        }
+      }, 1800);
+    }
+
+    function populateCountries() {
+      const selectors = [
+        document.getElementById('signupCountry'),
+        document.getElementById('googleCountry')
+      ];
+      selectors.forEach(function (sel) {
+        if (!sel) return;
+        const current = sel.innerHTML;
+        let html = '<option value="">Select your country</option>';
+        COUNTRIES.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).forEach(function (c) {
+          html += '<option value="' + c.c + '" data-name="' + c.n + '" data-currency="' + c.cur + '" data-symbol="' + c.s + '">' + c.n + '</option>';
+        });
+        sel.innerHTML = html;
+      });
+    }
+
+    // ============================================================
+    // MODE
+    // ============================================================
+    function selectMode(mode) {
+      if (mode === 'live' && !livePublished) {
+        showToast('Live mode is not yet open.', 'info');
+        return;
+      }
+      currentMode = mode;
+      setMode(mode);
+      updateModeUI();
+      playSound('click');
+    }
+
+    function updateModeUI() {
+      const buttons = document.querySelectorAll('#modePicker button');
+      buttons.forEach(function (b) {
+        b.classList.toggle('active', b.dataset.mode === currentMode);
+      });
+
+      const liveBtn = document.querySelector('#modePicker button[data-mode="live"]');
+      if (liveBtn) {
+        liveBtn.disabled = !livePublished;
+        if (!livePublished) liveBtn.title = 'Live mode is not yet available';
+      }
+
+      const liveNotice = document.getElementById('liveNotice');
+      if (liveNotice) {
+        liveNotice.style.display = (!livePublished && currentMode === 'live') ? 'flex' : 'none';
+      }
+
+      // show Google buttons only in live mode
+      const googleSignup = document.getElementById('googleSignup');
+      const googleLogin = document.getElementById('googleLogin');
+      if (googleSignup) googleSignup.style.display = (currentMode === 'live' && livePublished) ? 'block' : 'none';
+      if (googleLogin) googleLogin.style.display = (currentMode === 'live' && livePublished) ? 'block' : 'none';
+
+      // disable submit buttons if live mode selected but not published
+      const signupSubmit = document.getElementById('signupSubmit');
+      const loginSubmit = document.getElementById('loginSubmit');
+      const isBlocked = (currentMode === 'live' && !livePublished);
+      if (signupSubmit) signupSubmit.disabled = isBlocked;
+      if (loginSubmit) loginSubmit.disabled = isBlocked;
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('#authTabs .tab-btn').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.tab === tab);
+      });
+      document.querySelectorAll('.tab-content').forEach(function (c) {
+        c.classList.remove('active');
+      });
+      const content = document.getElementById('tab-' + tab);
+      if (content) content.classList.add('active');
+      clearAllErrors();
+      playSound('click');
+    }
+
+    // ============================================================
+    // FORM HELPERS
+    // ============================================================
+    function togglePwd(id, btn) {
+      const input = document.getElementById(id);
+      if (!input) return;
+      const icon = btn.querySelector('.material-icons');
+      if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) icon.textContent = 'visibility_off';
+      } else {
+        input.type = 'password';
+        if (icon) icon.textContent = 'visibility';
+      }
+    }
+
+    function showFieldError(fieldId, message) {
+      const el = document.getElementById('err-' + fieldId);
+      if (el) {
+        el.textContent = message;
+        el.classList.add('show');
+      }
+      const input = document.getElementById(fieldId);
+      if (input) input.classList.add('error');
+    }
+
+    function clearAllErrors() {
+      document.querySelectorAll('.error-text').forEach(function (e) {
+        e.classList.remove('show');
+        e.textContent = '';
+      });
+      document.querySelectorAll('input.error, select.error').forEach(function (e) {
+        e.classList.remove('error');
+      });
+    }
+
+    function onCountryChange() {
+      const sel = document.getElementById('signupCountry');
+      if (!sel) return;
+      // clear error when selected
+      const err = document.getElementById('err-signupCountry');
+      if (err) { err.classList.remove('show'); err.textContent = ''; }
+      sel.classList.remove('error');
+    }
+
+    // Password strength
+    function updatePasswordStrength(pwd) {
+      const bars = document.querySelectorAll('#pwdStrength .bar');
+      let score = 0;
+      if (pwd.length >= 8) score++;
+      if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+      if (/[0-9]/.test(pwd)) score++;
+      if (/[^A-Za-z0-9]/.test(pwd)) score++;
+
+      let cls = '';
+      if (score >= 4) cls = 'filled-strong';
+      else if (score >= 2) cls = 'filled-medium';
+      else if (score >= 1) cls = 'filled-weak';
+
+      bars.forEach(function (b, i) {
+        b.classList.remove('filled-weak', 'filled-medium', 'filled-strong');
+        if (i < score) b.classList.add(cls);
+      });
+    }
+
+    // ============================================================
+    // SIGNUP FLOW
+    // ============================================================
+    const signupForm = document.getElementById('signupForm');
+    if (signupForm) {
+      signupForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        clearAllErrors();
+
+        const name = document.getElementById('signupName').value.trim();
+        const email = document.getElementById('signupEmail').value.trim().toLowerCase();
+        const username = document.getElementById('signupUsername').value.trim();
+        const password = document.getElementById('signupPassword').value;
+        const confirm = document.getElementById('signupConfirmPassword').value;
+        const countrySel = document.getElementById('signupCountry');
+        const countryOpt = countrySel.options[countrySel.selectedIndex];
+        const countryCode = countrySel.value;
+        const countryName = countryOpt ? (countryOpt.getAttribute('data-name') || '') : '';
+        const currency = countryOpt ? (countryOpt.getAttribute('data-currency') || 'NGN') : 'NGN';
+        const dob = document.getElementById('signupDob').value;
+        const phone = document.getElementById('signupPhone').value.trim();
+        const address = document.getElementById('signupAddress').value.trim();
+        const referral = document.getElementById('signupReferral').value.trim();
+        const terms = document.getElementById('signupTerms').checked;
+
+        let ok = true;
+        if (!name) { showFieldError('signupName', 'Full name is required'); ok = false; }
+        if (!email || !isValidEmail(email)) { showFieldError('signupEmail', 'Valid email required'); ok = false; }
+        const userErr = isValidUsername(username) ? null : 'Username must be 3-30 chars, letters/numbers/underscore, not reserved';
+        if (userErr) { showFieldError('signupUsername', userErr); ok = false; }
+        const pwdErr = passwordError(password);
+        if (pwdErr) { showFieldError('signupPassword', pwdErr); ok = false; }
+        if (password !== confirm) { showFieldError('signupConfirmPassword', 'Passwords do not match'); ok = false; }
+        if (!countryCode) { showFieldError('signupCountry', 'Please select your country'); ok = false; }
+        if (!dob) { showFieldError('signupDob', 'Date of birth required'); ok = false; }
+        if (!terms) { showFieldError('signupTerms', 'You must agree to the Terms and Privacy Policy'); ok = false; }
+
+        if (!ok) return;
+
+        // show review modal
+        pendingSignup = {
+          fullName: name,
+          email: email,
+          username: username,
+          password: password,
+          country: countryName,
+          countryCode: countryCode,
+          currency: currency,
+          dob: dob,
+          phone: phone,
+          address: address,
+          referredBy: referral || null
+        };
+
+        document.getElementById('reviewName').textContent = name;
+        document.getElementById('reviewUsername').textContent = '@' + username;
+        document.getElementById('reviewCountry').textContent = countryName;
+        document.getElementById('reviewDob').textContent = dob;
+        document.getElementById('reviewEmail').textContent = email;
+
+        document.getElementById('reviewModal').classList.add('open');
+      });
+    }
+
+    // Password strength live update
+    const pwdInput = document.getElementById('signupPassword');
+    if (pwdInput) {
+      pwdInput.addEventListener('input', function () {
+        updatePasswordStrength(this.value);
+      });
+    }
+
+    function closeReview() {
+      document.getElementById('reviewModal').classList.remove('open');
+      playSound('click');
+    }
+
+    async function confirmSignup() {
+      if (!pendingSignup) return;
+
+      document.getElementById('reviewModal').classList.remove('open');
+      showLoading('Creating account...');
+
+      try {
+        setMode(currentMode);
+        const result = await signup(pendingSignup);
+
+        if (result.error) {
+          hideLoading();
+          showToast(result.error, 'error');
+          playSound('error');
+          return;
+        }
+
+        // Live mode: may require email confirmation
+        if (currentMode === 'live') {
+          const sb = getSupabase();
+          if (sb) {
+            const { data } = await sb.auth.getSession();
+            if (!data || !data.session) {
+              hideLoading();
+              showToast('Account created. Please check your email to verify before logging in.', 'success');
+              switchTab('login');
+              return;
+            }
+          }
+        }
+
+        hideLoading();
+        showToast('Account created successfully!', 'success');
+        playSound('reward');
+        setTimeout(function () { window.location.href = 'app.html'; }, 800);
+      } catch (err) {
+        hideLoading();
+        showToast(err.message || 'Something went wrong', 'error');
+        playSound('error');
+      } finally {
+        pendingSignup = null;
+      }
+    }
+
+    // ============================================================
+    // LOGIN FLOW
+    // ============================================================
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+      loginForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        clearAllErrors();
+
+        const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+        const password = document.getElementById('loginPassword').value;
+
+        let ok = true;
+        if (!email || !isValidEmail(email)) { showFieldError('loginEmail', 'Valid email required'); ok = false; }
+        if (!password) { showFieldError('loginPassword', 'Password required'); ok = false; }
+        if (!ok) return;
+
+        const submitBtn = document.getElementById('loginSubmit');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="material-icons">hourglass_empty</span> Logging in...';
+
+        try {
+          setMode(currentMode);
+          const result = await login(email, password);
+
+          if (result.error) {
+            showToast(result.error, 'error');
+            playSound('error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span class="material-icons">login</span> Log In';
+            return;
+          }
+
+          showToast('Welcome back!', 'success');
+          playSound('success');
+          setTimeout(function () { window.location.href = 'app.html'; }, 700);
+        } catch (err) {
+          showToast(err.message || 'Login failed', 'error');
+          playSound('error');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<span class="material-icons">login</span> Log In';
+        }
+      });
+    }
+
+    // ============================================================
+    // RESET FLOW
+    // ============================================================
+    const resetForm = document.getElementById('resetForm');
+    if (resetForm) {
+      resetForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        clearAllErrors();
+
+        const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+        if (!email || !isValidEmail(email)) {
+          showFieldError('resetEmail', 'Valid email required');
+          return;
+        }
+
+        const submitBtn = document.getElementById('resetSubmit');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="material-icons">hourglass_empty</span> Sending...';
+
+        try {
+          setMode(currentMode);
+          const result = await requestPasswordReset(email);
+          if (result.error) {
+            showToast(result.error, 'error');
+          } else {
+            showToast(result.demo ? 'Demo password reset: contact support@solforeyx.com' : 'Check your email for reset link', 'success');
+            playSound('success');
+          }
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<span class="material-icons">send</span> Send Reset Link';
+        } catch (err) {
+          showToast('Error sending reset link', 'error');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<span class="material-icons">send</span> Send Reset Link';
+        }
+      });
+    }
+
+    // ============================================================
+    // GOOGLE SIGN IN
+    // ============================================================
+    async function handleGoogleSignIn() {
+      if (!livePublished) {
+        showToast('Live mode is not yet available', 'info');
+        return;
+      }
+
+      const sb = getSupabase();
+      if (!sb) {
+        showToast('Service unavailable', 'error');
+        return;
+      }
+
+      showLoading('Opening Google...');
+
+      try {
+        const { data, error } = await sb.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: window.location.origin + '/auth.html' }
+        });
+
+        if (error) {
+          hideLoading();
+          showToast(error.message, 'error');
+          return;
+        }
+        // OAuth redirects away — hideLoading will trigger if user comes back
+      } catch (err) {
+        hideLoading();
+        showToast(err.message || 'Google sign-in failed', 'error');
+      }
+    }
+
+    // Detect Google OAuth return
+    async function checkGoogleReturn() {
+      const sb = getSupabase();
+      if (!sb) return;
+      try {
+        const { data } = await sb.auth.getSession();
+        if (!data || !data.session) return;
+
+        const user = data.session.user;
+        if (!user) return;
+
+        // Check if user has profile
+        const { data: profile, error } = await sb.from('users').select('*').eq('id', user.id).single();
+
+        if (error || !profile) {
+          // Profile missing — show completion modal
+          pendingGoogleUser = user;
+          document.getElementById('profileModal').classList.add('open');
+          return;
+        }
+
+        if (!profile.username || !profile.country) {
+          pendingGoogleUser = user;
+          document.getElementById('profileModal').classList.add('open');
+          return;
+        }
+
+        // Complete profile — go to app
+        window.location.href = 'app.html';
+      } catch (e) { /* ignore */ }
+    }
+
+    async function saveGoogleProfile() {
+      const username = document.getElementById('googleUsername').value.trim();
+      const countrySel = document.getElementById('googleCountry');
+      const countryOpt = countrySel.options[countrySel.selectedIndex];
+      const countryCode = countrySel.value;
+      const countryName = countryOpt ? (countryOpt.getAttribute('data-name') || '') : '';
+      const currency = countryOpt ? (countryOpt.getAttribute('data-currency') || 'NGN') : 'NGN';
+
+      clearAllErrors();
+      let ok = true;
+      if (!isValidUsername(username)) {
+        showFieldError('googleUsername', 'Username must be 3-30 chars, letters/numbers/underscore');
+        ok = false;
+      }
+      if (!countryCode) {
+        showFieldError('googleCountry', 'Please select your country');
+        ok = false;
+      }
+      if (!ok || !pendingGoogleUser) return;
+
+      const sb = getSupabase();
+      if (!sb) return;
+
+      try {
+        await sb.from('users').upsert({
+          id: pendingGoogleUser.id,
+          email: pendingGoogleUser.email,
+          full_name: pendingGoogleUser.user_metadata && pendingGoogleUser.user_metadata.full_name ? pendingGoogleUser.user_metadata.full_name : 'User',
+          username: username,
+          country: countryName,
+          country_code: countryCode,
+          currency: currency,
+          referral_code: generateReferralCode(),
+          deposit_balance: 0,
+          earnings_balance: 0,
+          coins: 0,
+          diamond_points: 0,
+          stage: 1,
+          lifetime_earned: 0,
+          lifetime_withdrawn: 0
+        });
+
+        showToast('Profile complete!', 'success');
+        setTimeout(function () { window.location.href = 'app.html'; }, 700);
+      } catch (err) {
+        showToast(err.message || 'Could not save profile', 'error');
+      }
+    }
+
+    async function logoutGoogleIncomplete() {
+      const sb = getSupabase();
+      if (sb) await sb.auth.signOut();
+      document.getElementById('profileModal').classList.remove('open');
+      pendingGoogleUser = null;
+      showToast('Sign-in cancelled', 'info');
+    }
+
+    // ============================================================
+    // OVERRIDE applyModeUI ON AUTH PAGE (no demo banner here)
+    // ============================================================
+    window.applyModeUI = function () {
+      document.body.classList.remove('demo-mode');
+      const b = document.getElementById('demoBanner');
+      if (b) b.remove();
+    };
+
+    // ============================================================
+    // BOOT
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', function () {
+      init().then(function () {
+        // after init, check if returning from Google OAuth
+        setTimeout(checkGoogleReturn, 500);
+      });
+    });
+
+    // expose to inline handlers
+    window.selectMode = selectMode;
+    window.switchTab = switchTab;
+    window.togglePwd = togglePwd;
+    window.closeReview = closeReview;
+    window.confirmSignup = confirmSignup;
+    window.onCountryChange = onCountryChange;
+    window.handleGoogleSignIn = handleGoogleSignIn;
+    window.saveGoogleProfile = saveGoogleProfile;
+    window.logoutGoogleIncomplete = logoutGoogleIncomplete;
+
+  })();
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /auth.html
+Allow: /bamboo-view.html
+Allow: /manifest.json
+Disallow: /app.html
+Disallow: /offline.html
+Disallow: /404.html
+Disallow: /js/
+Disallow: /css/
+
+Sitemap: https://pandacard.solforeyx.com/sitemap.xml

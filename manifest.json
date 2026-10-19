@@ -1,0 +1,54 @@
+{
+  "name": "Panda Card",
+  "short_name": "PandaCard",
+  "description": "Trade Smart. Stay Cute. Card trading, mining, and daily rewards.",
+  "start_url": "/app.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8F8FC",
+  "theme_color": "#FFD700",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["finance", "shopping", "games"],
+  "icons": [
+    {
+      "src": "/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Marketplace",
+      "short_name": "Market",
+      "url": "/app.html#marketplace",
+      "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mining",
+      "short_name": "Mine",
+      "url": "/app.html#mining",
+      "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Daily Combo",
+      "short_name": "Combo",
+      "url": "/app.html#combo",
+      "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

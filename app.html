@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#FFD700" />
+  <title>Panda Card</title>
+  <meta name="description" content="Panda Card. Trade Smart. Stay Cute." />
+  <link rel="icon" type="image/png" href="assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- DEMO BANNER -->
+<div id="demoBanner" class="demo-banner" style="display:none;">DEMO MODE</div>
+
+<!-- SPLASH SCREEN -->
+<div id="splash" style="position:fixed;inset:0;background:#FFFFFF;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;transition:opacity 0.6s ease;">
+  <img src="https://i.imgur.com/9aLmHyS.png" alt="Panda Card" style="width:100px;height:100px;object-fit:contain;margin-bottom:16px;" />
+  <div style="font-size:30px;font-weight:900;color:#1A1A2E;letter-spacing:-1px;">Panda<span style="color:#FFD700;">Card</span></div>
+  <div style="font-size:13px;color:#999;margin-top:4px;">Trade Smart. Stay Cute.</div>
+  <div style="font-size:11px;color:#ccc;margin-top:16px;">by Solforeyx</div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay hide" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Loading...</div>
+</div>
+
+<!-- SIDEBAR -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="profile-section">
+    <div class="avatar"><span class="material-icons">person</span></div>
+    <div class="info">
+      <div class="name" id="sidebarName">User</div>
+      <div class="username" id="sidebarUsername">@user</div>
+      <div class="balance">Earnings: <span class="highlight" id="sidebarEarnings">₦0</span></div>
+      <div class="balance" style="font-size:11px;color:#aaa;">Deposit: <span id="sidebarDeposit">₦0</span></div>
+    </div>
+  </div>
+  <div class="menu">
+    <div class="menu-item active" onclick="navigateTo('dashboard')"><span class="material-icons">home</span> Dashboard</div>
+    <div class="menu-item" onclick="navigateTo('trade')"><span class="material-icons">compare_arrows</span> Trade</div>
+    <div class="menu-item" onclick="navigateTo('mining')"><span class="material-icons">gavel</span> Mining</div>
+    <div class="menu-item" onclick="navigateTo('combo')"><span class="material-icons">extension</span> Daily Combo</div>
+    <div class="menu-item" onclick="navigateTo('wallet')"><span class="material-icons">account_balance_wallet</span> Wallet</div>
+    <div class="menu-item" onclick="navigateTo('inventory')"><span class="material-icons">inventory_2</span> Inventory</div>
+    <div class="divider"></div>
+    <div class="menu-item" onclick="navigateTo('profile')"><span class="material-icons">person</span> Profile</div>
+    <div class="menu-item" onclick="navigateTo('dailyreward')"><span class="material-icons">card_giftcard</span> Daily Reward</div>
+    <div class="menu-item" onclick="navigateTo('notifications')"><span class="material-icons">notifications</span> Notifications</div>
+    <div class="menu-item" onclick="navigateTo('live')"><span class="material-icons">live_tv</span> Live</div>
+    <div class="menu-item" onclick="navigateTo('announcements')"><span class="material-icons">campaign</span> Announcements</div>
+    <div class="menu-item" onclick="navigateTo('referral')"><span class="material-icons">share</span> Referral Bonus</div>
+    <div class="menu-item" onclick="navigateTo('help')"><span class="material-icons">help</span> Help / FAQ</div>
+    <div class="menu-item" onclick="navigateTo('rate')"><span class="material-icons">star</span> Rate App</div>
+    <div class="menu-item" onclick="window.open('bamboo-view.html','_self')"><span class="material-icons">analytics</span> Bamboo View</div>
+    <div class="menu-item" onclick="navigateTo('settings')"><span class="material-icons">settings</span> Settings</div>
+    <div class="divider"></div>
+    <div class="menu-item" onclick="logout()"><span class="material-icons">logout</span> Logout</div>
+  </div>
+  <div class="version">Panda Card v1.0.0</div>
+</aside>
+
+<!-- HEADER -->
+<header class="dashboard-header">
+  <div class="left" onclick="toggleSidebar()">
+    <img src="https://i.imgur.com/9aLmHyS.png" alt="Panda Card" class="logo" />
+    <div class="brand">Panda<span>Card</span></div>
+  </div>
+  <div class="right">
+    <span class="badge-container" onclick="navigateTo('notifications')">
+      <span class="material-icons">notifications</span>
+      <span class="badge-count" id="notificationBadge">0</span>
+    </span>
+    <span class="material-icons" onclick="navigateTo('settings')">settings</span>
+  </div>
+</header>
+
+<!-- ============================================== -->
+<!-- DASHBOARD SECTION -->
+<!-- ============================================== -->
+<section id="section-dashboard" class="app-section active">
+  <div class="app-container">
+    <div class="content-area">
+      <div id="bannerAlerts"></div>
+
+      <div class="balance-card">
+        <div class="label">Earnings Balance</div>
+        <div class="balance-earnings" id="balanceEarnings">₦0</div>
+        <div class="balance-deposit">Deposit Balance: <b id="balanceDeposit">₦0</b></div>
+        <div class="stage-progress">
+          <div class="stage-label">
+            <span>Stage</span>
+            <span class="stage-badge-small" id="stageBadge">Egg</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="stageProgressFill" style="width:0%;"></div></div>
+          <div class="stage-next" id="stageProgressLabel">₦0 / ₦50,000 — To Sprout</div>
+        </div>
+        <div class="actions">
+          <button onclick="navigateTo('wallet')"><span class="material-icons">add</span> Deposit</button>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item"><div class="stat-value" id="statPortfolio">₦0</div><div class="stat-label">Portfolio</div></div>
+        <div class="stat-item"><div class="stat-value" id="statCoins">0</div><div class="stat-label">Coins</div></div>
+        <div class="stat-item"><div class="stat-value" id="statCards">0</div><div class="stat-label">Cards</div></div>
+      </div>
+
+      <div id="checklistCard"></div>
+
+      <div class="graph-container">
+        <div class="graph-header">
+          <span class="graph-title">Portfolio Performance</span>
+          <span class="graph-change" id="portfolioChartChange">+0%</span>
+        </div>
+        <div class="chart-wrapper"><canvas id="portfolioChart"></canvas></div>
+        <div class="time-filters">
+          <button class="filter-btn active" data-days="7" onclick="changePortfolioTime(7, this)">7D</button>
+          <button class="filter-btn" data-days="14" onclick="changePortfolioTime(14, this)">14D</button>
+          <button class="filter-btn" data-days="30" onclick="changePortfolioTime(30, this)">30D</button>
+          <button class="filter-btn" data-days="90" onclick="changePortfolioTime(90, this)">90D</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="marketplace" onclick="switchDashTab('marketplace')">Marketplace</button>
+        <button class="tab-btn" data-tab="inventory" onclick="switchDashTab('inventory')">Inventory</button>
+      </div>
+
+      <div class="tab-content active" id="tab-marketplace">
+        <div class="section-header"><h2>All Cards</h2><span class="see-all" id="marketplaceCount">Loading...</span></div>
+        <div class="card-grid" id="marketplaceGrid"></div>
+      </div>
+
+      <div class="tab-content" id="tab-inventory">
+        <div class="section-header"><h2>My Cards</h2><span class="see-all" id="dashInventoryCount">0</span></div>
+        <div class="card-grid" id="dashInventoryGrid"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- TRADE SECTION -->
+<!-- ============================================== -->
+<section id="section-trade" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Trade</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div class="stats-row">
+        <div class="stat-item"><div class="stat-value" id="tradeDepositBal">₦0</div><div class="stat-label">Deposit</div></div>
+        <div class="stat-item"><div class="stat-value" id="tradeEarningsBal">₦0</div><div class="stat-label">Earnings</div></div>
+        <div class="stat-item"><div class="stat-value" id="tradeCoins">0</div><div class="stat-label">Coins</div></div>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn active" data-trade-tab="buy" onclick="switchTradeTab('buy')">Buy</button>
+        <button class="tab-btn" data-trade-tab="sell" onclick="switchTradeTab('sell')">Sell</button>
+      </div>
+      <div class="tab-content active" id="trade-buy">
+        <div class="form-group" style="margin-bottom:8px;">
+          <div class="input-wrapper">
+            <span class="material-icons">search</span>
+            <input type="text" id="tradeSearchInput" placeholder="Search cards..." oninput="filterTradeListings()" style="padding-left:46px;" />
+          </div>
+        </div>
+        <div class="filter-row" id="tradeFilterChips">
+          <span class="chip active" data-filter="all" onclick="setTradeFilter('all', this)">All</span>
+          <span class="chip" data-filter="hot" onclick="setTradeFilter('hot', this)">Hot</span>
+          <span class="chip" data-filter="neutral" onclick="setTradeFilter('neutral', this)">Neutral</span>
+          <span class="chip" data-filter="cold" onclick="setTradeFilter('cold', this)">Cold</span>
+          <span class="chip" data-filter="vip" onclick="setTradeFilter('vip', this)">VIP</span>
+        </div>
+        <div id="tradeBuyListings"></div>
+      </div>
+      <div class="tab-content" id="trade-sell">
+        <div id="tradeSellListings"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- MINING SECTION -->
+<!-- ============================================== -->
+<section id="section-mining" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Mining</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div class="stats-row">
+        <div class="stat-item"><div class="stat-value" id="miningTotalEarned">₦0</div><div class="stat-label">Today</div></div>
+        <div class="stat-item"><div class="stat-value" id="miningSessionsUsed">0/2</div><div class="stat-label">Sessions</div></div>
+        <div class="stat-item"><div class="stat-value" id="miningNextTime">--:--</div><div class="stat-label">Next</div></div>
+      </div>
+      <div class="section-header"><h2>Session Cards</h2></div>
+      <div class="mining-card-grid" id="miningSlots">
+        <div class="card-item" id="miningSlot1" onclick="tapMiningSlot(1)"></div>
+        <div class="card-item" id="miningSlot2" onclick="tapMiningSlot(2)"></div>
+        <div class="card-item" id="miningSlot3" onclick="tapMiningSlot(3)"></div>
+      </div>
+      <div style="margin-top:12px;padding:12px;background:#fff;border-radius:12px;font-size:13px;color:#666;" id="miningCostInfo">Complete all 3 cards to start mining.</div>
+      <button class="btn-action" id="miningStartBtn" onclick="startMining()" style="margin-top:16px;" disabled>Start Mining</button>
+      <div class="mining-result" id="miningResult"><span class="material-icons">check_circle</span><h3>Mining Successful</h3><p>You earned <strong id="miningResultAmount">₦0</strong></p></div>
+      <div class="section-header" style="margin-top:20px;"><h2>Recent</h2></div>
+      <div id="miningHistoryList" style="background:#fff;border-radius:12px;padding:12px;font-size:13px;color:#666;">No recent mining sessions.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- DAILY COMBO SECTION -->
+<!-- ============================================== -->
+<section id="section-combo" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Daily Combo</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div class="combo-card">
+        <div class="combo-label">Diamond Points</div>
+        <div class="combo-value"><span id="comboDpBalance">0</span> DP</div>
+        <div class="combo-timer" id="comboTimer">Resets daily</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item"><div class="stat-value" id="comboStreak">0</div><div class="stat-label">Streak</div></div>
+        <div class="stat-item"><div class="stat-value" id="comboDpToday">0</div><div class="stat-label">DP Today</div></div>
+        <div class="stat-item"><div class="stat-value" id="comboDpNeeded">600</div><div class="stat-label">For ₦20k</div></div>
+      </div>
+      <div class="section-header"><h2>Today's Card</h2></div>
+      <div id="comboCardArea" style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);"><div class="empty-state">Loading...</div></div>
+      <div id="comboActionArea" style="margin-top:16px;"></div>
+      <div class="section-header" style="margin-top:20px;"><h2>5-Day Progress</h2></div>
+      <div id="comboProgress" style="display:flex;gap:8px;justify-content:center;padding:12px;background:#fff;border-radius:12px;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- WALLET SECTION -->
+<!-- ============================================== -->
+<section id="section-wallet" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Wallet</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div class="balance-card">
+        <div class="label">Earnings Balance</div>
+        <div class="balance-earnings" id="walletEarnings">₦0</div>
+        <div class="balance-deposit">Deposit Balance: <b id="walletDeposit">₦0</b></div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item"><div class="stat-value" id="walletCoins">0</div><div class="stat-label">Coins</div></div>
+        <div class="stat-item"><div class="stat-value" id="walletDp">0</div><div class="stat-label">DP</div></div>
+        <div class="stat-item"><div class="stat-value" id="walletStage">Egg</div><div class="stat-label">Stage</div></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;">
+        <button class="btn-action" style="flex:1;" onclick="openDepositModal()">Deposit</button>
+        <button class="btn-action" style="flex:1;background:#1A1A2E;color:#FFD700;" onclick="openWithdrawModal()">Withdraw</button>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">account_balance</span> Bank Details</div>
+        <div id="walletBankDetails" style="font-size:13px;color:#666;">No bank details saved.</div>
+        <button class="btn-action" style="margin-top:12px;" onclick="openBankDetailsModal()">Manage Bank</button>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">history</span> Transaction History</div>
+        <div id="walletHistory" style="font-size:13px;color:#666;">No recent transactions.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- INVENTORY SECTION -->
+<!-- ============================================== -->
+<section id="section-inventory" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;">
+        <h2>My Inventory</h2>
+        <span class="see-all" id="inventoryCount">0 cards</span>
+      </div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <div class="input-wrapper">
+          <span class="material-icons">search</span>
+          <input type="text" id="inventorySearchInput" placeholder="Search cards..." oninput="filterInventory()" style="padding-left:46px;" />
+        </div>
+      </div>
+      <div id="bulkSellBar" style="display:none;background:#1A1A2E;color:#fff;padding:12px;border-radius:12px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span><span id="bulkSelectedCount">0</span> cards selected</span>
+          <button class="btn-action" onclick="openBulkSellModal()" style="max-width:120px;padding:8px 16px;font-size:13px;">Sell</button>
+        </div>
+      </div>
+      <div class="card-grid" id="inventoryFullGrid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- PROFILE SECTION -->
+<!-- ============================================== -->
+<section id="section-profile" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Profile</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div class="profile-header">
+        <div class="avatar"><span class="material-icons">person</span></div>
+        <div class="name" id="profileName">User</div>
+        <div class="username" id="profileUsername">@user</div>
+        <div class="stage" id="profileStage">Egg</div>
+        <div class="joined" id="profileJoined">Joined: --</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="value gold" id="profileLifetimeEarned">₦0</div><div class="label">Lifetime Earned</div></div>
+        <div class="stat-box"><div class="value" id="profileDp">0</div><div class="label">Diamond Points</div></div>
+        <div class="stat-box"><div class="value" id="profileCoins">0</div><div class="label">Coins</div></div>
+        <div class="stat-box"><div class="value green" id="profileTrades">0</div><div class="label">Trades</div></div>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">edit</span> Editable Info</div>
+        <div class="form-group">
+          <label>Phone</label>
+          <div class="input-wrapper"><span class="material-icons">phone</span><input type="tel" id="profilePhone" placeholder="+234..." /></div>
+        </div>
+        <div class="form-group">
+          <label>Address</label>
+          <div class="input-wrapper"><span class="material-icons">home</span><input type="text" id="profileAddress" placeholder="Street, city" /></div>
+        </div>
+        <button class="btn-action" onclick="saveProfile()">Save Changes</button>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">settings</span> Account</div>
+        <div class="settings-item" onclick="navigateTo('settings')"><div class="left"><span class="material-icons">tune</span><span class="label">Settings</span></div><div class="right"><span class="material-icons">chevron_right</span></div></div>
+        <div class="settings-item" onclick="logout()"><div class="left"><span class="material-icons">logout</span><span class="label">Logout</span></div><div class="right"><span class="material-icons">chevron_right</span></div></div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#ccc;margin-top:16px;">Panda Card v1.0.0</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- SETTINGS SECTION -->
+<!-- ============================================== -->
+<section id="section-settings" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Settings</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">science</span> Mode</div>
+        <div class="mode-switch">
+          <button data-mode="demo" onclick="switchAppMode('demo')">Demo</button>
+          <button data-mode="live" onclick="switchAppMode('live')">Live</button>
+        </div>
+        <div style="font-size:11px;color:#999;margin-top:8px;" id="modeHelperText"></div>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">palette</span> Appearance</div>
+        <div class="settings-item">
+          <div class="left"><span class="material-icons">dark_mode</span><span class="label">Dark Mode</span></div>
+          <div class="right"><div class="toggle" id="settingsDarkToggle" onclick="toggleDarkMode()"><div class="thumb"></div></div></div>
+        </div>
+        <div class="settings-item">
+          <div class="left"><span class="material-icons">volume_up</span><span class="label">Sound Effects</span></div>
+          <div class="right"><div class="toggle" id="settingsSoundToggle" onclick="toggleSound()"><div class="thumb"></div></div></div>
+        </div>
+        <div class="settings-item" onclick="openLanguageModal()">
+          <div class="left"><span class="material-icons">language</span><span class="label">Language</span></div>
+          <div class="right"><span id="settingsLanguage">English</span></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">lock</span> Security</div>
+        <div class="settings-item" onclick="openPinModal('set')">
+          <div class="left"><span class="material-icons">pin</span><span class="label">Change PIN</span></div>
+          <div class="right"><span class="material-icons">chevron_right</span></div>
+        </div>
+        <div class="settings-item" onclick="openChangePasswordModal()">
+          <div class="left"><span class="material-icons">password</span><span class="label">Change Password</span></div>
+          <div class="right"><span class="material-icons">chevron_right</span></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="material-icons">dangerous</span> Danger Zone</div>
+        <div class="settings-item" onclick="openDeleteAccountModal()">
+          <div class="left"><span class="material-icons" style="color:#FF4444;">delete_forever</span><span class="label" style="color:#FF4444;">Delete Account</span></div>
+          <div class="right"><span class="material-icons">chevron_right</span></div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#ccc;margin-top:16px;" id="settingsVersion">Panda Card v1.0.0</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- NOTIFICATIONS SECTION -->
+<!-- ============================================== -->
+<section id="section-notifications" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Notifications</h2><span class="see-all" onclick="markAllNotificationsRead()">Mark all read</span></div>
+      <div id="notificationsList"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- REFERRAL SECTION -->
+<!-- ============================================== -->
+<section id="section-referral" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Referral Bonus</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div style="background:#fff;border-radius:16px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.04);text-align:center;">
+        <span class="material-icons" style="font-size:48px;color:#FFD700;">card_giftcard</span>
+        <h3 style="margin-top:8px;">Invite Friends, Earn Coins</h3>
+        <p style="font-size:13px;color:#666;margin-top:4px;">Your rate: <b id="referralRate">10 PC</b> at first deposit + <b id="referralRate2">10 PC</b> at first withdrawal</p>
+        <div style="background:#f8f8fc;border-radius:12px;padding:16px;margin:16px 0;">
+          <input type="text" id="referralCode" readonly style="width:100%;padding:10px;border:2px solid #e8e8e8;border-radius:10px;font-size:14px;text-align:center;font-weight:700;font-family:'Poppins',sans-serif;background:#fff;" value="..." />
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button class="btn-action" style="flex:1;" onclick="copyReferral()">Copy</button>
+          <button class="btn-action" style="flex:1;background:#1A1A2E;color:#fff;" onclick="shareReferral()">Share</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <div style="flex:1;background:#f8f8fc;border-radius:10px;padding:12px;"><div style="font-size:18px;font-weight:800;color:#FFD700;" id="referralCount">0</div><div style="font-size:10px;color:#999;">Referrals</div></div>
+          <div style="flex:1;background:#f8f8fc;border-radius:10px;padding:12px;"><div style="font-size:18px;font-weight:800;color:#FFD700;" id="referralCoinsEarned">0</div><div style="font-size:10px;color:#999;">Coins</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- ANNOUNCEMENTS SECTION -->
+<!-- ============================================== -->
+<section id="section-announcements" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Announcements</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div id="announcementsList">
+        <!-- Hardcoded HTML fallback for Google SEO -->
+        <div id="hardcodedAnnouncement" style="background:#fff;border-radius:16px;padding:20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);border-left:4px solid #FFD700;">
+          <h3 style="margin-bottom:8px;font-size:16px;font-weight:800;">Live Mode Coming Soon!</h3>
+          <p style="font-size:14px;color:#555;line-height:1.6;">Welcome to Panda Card! We are currently in Phase 1: Demo Mode. Live Mode is temporarily unavailable to ensure everyone has enough time to master the trading, mining, and combo systems without risking real money. When we officially launch Live Mode, everyone will be notified here and via email. For now, enjoy exploring with Demo cash!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- LIVE SECTION -->
+<!-- ============================================== -->
+<section id="section-live" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Live</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div style="background:#fff;border-radius:16px;padding:20px;text-align:center;">
+        <span class="material-icons" style="font-size:48px;color:#FFD700;">live_tv</span>
+        <h3 style="margin-top:8px;">Watch Tutorials</h3>
+        <p style="font-size:13px;color:#666;margin-top:4px;">Learn how Panda Card works.</p>
+        <button class="btn-action" style="margin-top:16px;" onclick="window.open('documentary.html','_self')">Open Live</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- HELP SECTION -->
+<!-- ============================================== -->
+<section id="section-help" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Help / FAQ</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div id="faqList"></div>
+      <div class="section" style="margin-top:16px;">
+        <div class="section-title"><span class="material-icons">email</span> Contact Us</div>
+        <div class="form-group"><label>Your Email</label><div class="input-wrapper"><span class="material-icons">email</span><input type="email" id="contactEmail" placeholder="you@example.com" /></div></div>
+        <div class="form-group"><label>Subject</label><div class="input-wrapper"><span class="material-icons">subject</span><input type="text" id="contactSubject" placeholder="Subject" /></div></div>
+        <div class="form-group"><label>Message</label><textarea id="contactBody" placeholder="Message..." style="width:100%;padding:14px;border:2px solid #e8e8e8;border-radius:12px;font-size:15px;font-family:'Poppins',sans-serif;min-height:100px;"></textarea></div>
+        <button class="btn-action" onclick="submitContact()">Send Message</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- RATE APP SECTION -->
+<!-- ============================================== -->
+<section id="section-rate" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Rate App</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      <div style="background:#fff;border-radius:16px;padding:20px;text-align:center;">
+        <span class="material-icons" style="font-size:48px;color:#FFD700;">star</span>
+        <h3 style="margin-top:8px;">Rating Coming Soon</h3>
+        <p style="font-size:13px;color:#666;margin-top:4px;">Rate us on Play Store once available.</p>
+      </div>
+      <div class="social-links" style="margin-top:12px;">
+        <a class="social-btn" href="https://youtube.com/@solforeyx" target="_blank" rel="noopener"><span class="material-icons">play_circle</span> YouTube</a>
+        <a class="social-btn" href="https://www.instagram.com/solforeyx" target="_blank" rel="noopener"><span class="material-icons">photo_camera</span> Instagram</a>
+        <a class="social-btn" href="https://www.tiktok.com/@solforeyx" target="_blank" rel="noopener"><span class="material-icons">music_note</span> TikTok</a>
+        <a class="social-btn" href="https://www.facebook.com/profile.php?id=61594720690830" target="_blank" rel="noopener"><span class="material-icons">facebook</span> Facebook</a>
+        <a class="social-btn" href="https://x.com/solforeyx" target="_blank" rel="noopener"><span class="material-icons">close</span> X (Twitter)</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- DAILY REWARD SECTION -->
+<!-- ============================================== -->
+<section id="section-dailyreward" class="app-section">
+  <div class="app-container">
+    <div class="content-area">
+      <div class="section-header" style="margin-top:12px;"><h2>Daily Reward</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+
+      <div class="balance-card">
+        <div class="label">Day Progress</div>
+        <div style="font-size:24px;font-weight:800;"><span id="rewardDayCount">0</span>/90</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.5);"><span id="rewardDaysRemaining">90</span> days left</div>
+      </div>
+
+      <div style="background:#fff;border-radius:16px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.04);margin-bottom:16px;">
+        <div style="font-size:36px;font-weight:900;color:#FFD700;"><span id="rewardTotal">20</span> PC</div>
+        <div style="font-size:12px;color:#999;">Streak: <span id="rewardStreak">0</span> days</div>
+        <button class="btn-action" id="claimRewardBtn" onclick="claimDailyReward()" style="margin-top:12px;">Claim Now</button>
+        <div id="rewardStatus" style="margin-top:8px;font-size:13px;color:#999;"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Reward Calendar</div>
+        <div id="rewardCalendar" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;"></div>
+      </div>
+
+      <div class="section" id="coinPurchaseSection">
+        <div class="section-title"><span class="material-icons">monetization_on</span> Buy Panda Coins</div>
+        <p style="font-size:12px;color:#999;margin-bottom:12px;">Buy coins from your Deposit Balance</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <button onclick="buyCoins(100, 10)" style="padding:12px;background:#FFD700;color:#1A1A2E;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Poppins',sans-serif;">10 PC<br/><span style="font-size:10px;">₦100</span></button>
+          <button onclick="buyCoins(500, 50)" style="padding:12px;background:#FFD700;color:#1A1A2E;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Poppins',sans-serif;">50 PC<br/><span style="font-size:10px;">₦500</span></button>
+          <button onclick="buyCoins(1000, 100)" style="padding:12px;background:#FFD700;color:#1A1A2E;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Poppins',sans-serif;">100 PC<br/><span style="font-size:10px;">₦1,000</span></button>
+          <button onclick="buyCoins(5000, 500)" style="padding:12px;background:#1A1A2E;color:#FFD700;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Poppins',sans-serif;">500 PC<br/><span style="font-size:10px;">₦5,000</span></button>
+          <button onclick="buyCoins(10000, 1000)" style="padding:12px;background:#1A1A2E;color:#FFD700;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Poppins',sans-serif;">1,000 PC<br/><span style="font-size:10px;">₦10,000</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- BOTTOM NAVIGATION -->
+<!-- ============================================== -->
+<nav class="bottom-nav">
+  <a href="#" onclick="navigateTo('dashboard');return false;" class="active" id="nav-dashboard"><span class="nav-icon material-icons">home</span>Home</a>
+  <a href="#" onclick="navigateTo('trade');return false;" id="nav-trade"><span class="nav-icon material-icons">compare_arrows</span>Trade</a>
+  <a href="#" onclick="navigateTo('wallet');return false;" id="nav-wallet"><span class="nav-icon material-icons">account_balance_wallet</span>Wallet</a>
+  <a href="#" onclick="navigateTo('mining');return false;" id="nav-mining"><span class="nav-icon material-icons">gavel</span>Mining</a>
+  <a href="#" onclick="navigateTo('profile');return false;" id="nav-profile"><span class="nav-icon material-icons">person</span>Profile</a>
+</nav>
+
+<!-- ============================================== -->
+<!-- MODALS -->
+<!-- ============================================== -->
+
+<!-- CARD MODAL -->
+<div class="modal-overlay" id="cardModal" onclick="if(event.target===this)closeCardModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeCardModal()"><span class="material-icons">close</span></button>
+    <div id="cardModalBody"></div>
+  </div>
+</div>
+
+<!-- DEPOSIT MODAL -->
+<div class="modal-overlay" id="depositModal" onclick="if(event.target===this)closeDepositModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeDepositModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:8px;">Deposit Funds</h3>
+    <p style="font-size:13px;color:#999;margin-bottom:16px;">Minimum deposit: ₦20,000.</p>
+    <div class="form-group"><label>Amount (NGN)</label><div class="input-wrapper"><span class="material-icons">payments</span><input type="number" id="depositAmount" placeholder="Enter amount" min="20000" step="100" /></div></div>
+    <div class="form-group"><label>Payment Method</label>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-action" style="flex:1;background:#00C3F7;color:#fff;" onclick="selectPaymentMethod('paystack')">Paystack</button>
+        <button class="btn-action" style="flex:1;background:#F5A623;color:#fff;" onclick="selectPaymentMethod('flutterwave')">Flutterwave</button>
+      </div>
+      <div style="font-size:11px;color:#999;margin-top:6px;" id="paymentMethodHint">Select a payment method</div>
+    </div>
+    <button class="btn-primary" onclick="submitDeposit()" style="margin-top:8px;">Continue to Payment</button>
+  </div>
+</div>
+
+<!-- WITHDRAW MODAL -->
+<div class="modal-overlay" id="withdrawModal" onclick="if(event.target===this)closeWithdrawModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeWithdrawModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:8px;">Withdraw Funds</h3>
+    <p style="font-size:13px;color:#999;margin-bottom:16px;">Minimum: ₦20,000 or ₦5,000 with bonus card. 15% fee.</p>
+    <div class="form-group"><label>Amount</label><div class="input-wrapper"><span class="material-icons">payments</span><input type="number" id="withdrawAmount" placeholder="Enter amount" oninput="updateWithdrawInfo()" /></div></div>
+    <div style="background:#f0f0f5;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#666;" id="withdrawInfo">Checking...</div>
+    <div class="form-group"><label>4-Digit PIN</label><div class="input-wrapper"><span class="material-icons">lock</span><input type="password" id="withdrawPin" placeholder="PIN" maxlength="4" inputmode="numeric" /></div></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="useBonusCard" onchange="toggleBonusWithdraw()" /> Use bonus card (if available)</label>
+    <button class="btn-primary" onclick="submitWithdraw()">Request Withdrawal</button>
+  </div>
+</div>
+
+<!-- BANK MODAL -->
+<div class="modal-overlay" id="bankModal" onclick="if(event.target===this)closeBankModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeBankModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:16px;">Bank Details</h3>
+    <div class="form-group"><label>Bank Name</label><div class="input-wrapper"><span class="material-icons">account_balance</span><input type="text" id="bankName" placeholder="GTBank" /></div></div>
+    <div class="form-group"><label>Account Name</label><div class="input-wrapper"><span class="material-icons">person</span><input type="text" id="bankAccountName" placeholder="Your full name" /></div></div>
+    <div class="form-group"><label>Account Number</label><div class="input-wrapper"><span class="material-icons">numbers</span><input type="tel" id="bankAccountNumber" placeholder="10 digits" maxlength="10" /></div></div>
+    <div class="form-group"><label>Confirm</label><div class="input-wrapper"><span class="material-icons">numbers</span><input type="tel" id="bankAccountNumberConfirm" placeholder="Re-enter" maxlength="10" /></div></div>
+    <button class="btn-primary" onclick="saveBankDetails()">Save Bank Details</button>
+  </div>
+</div>
+
+<!-- PIN MODAL -->
+<div class="modal-overlay" id="pinModal" onclick="if(event.target===this)closePinModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closePinModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:16px;">Set 4-Digit PIN</h3>
+    <div class="form-group"><label>New PIN</label><div class="input-wrapper"><span class="material-icons">lock</span><input type="password" id="pinNew" placeholder="4 digits" maxlength="4" inputmode="numeric" /></div></div>
+    <div class="form-group"><label>Confirm</label><div class="input-wrapper"><span class="material-icons">lock</span><input type="password" id="pinConfirm" placeholder="Re-enter" maxlength="4" inputmode="numeric" /></div></div>
+    <button class="btn-primary" onclick="savePin()">Save PIN</button>
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
+<div class="modal-overlay" id="changePasswordModal" onclick="if(event.target===this)closeChangePasswordModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeChangePasswordModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:16px;">Change Password</h3>
+    <div class="form-group"><label>Current</label><div class="input-wrapper"><span class="material-icons">lock</span><input type="password" id="cpCurrent" /></div></div>
+    <div class="form-group"><label>New</label><div class="input-wrapper"><span class="material-icons">lock</span><input type="password" id="cpNew" /></div></div>
+    <div class="form-group"><label>Confirm</label><div class="input-wrapper"><span class="material-icons">lock</span><input type="password" id="cpConfirm" /></div></div>
+    <button class="btn-primary" onclick="saveChangePassword()">Update Password</button>
+  </div>
+</div>
+
+<!-- DELETE ACCOUNT MODAL -->
+<div class="modal-overlay" id="deleteAccountModal" onclick="if(event.target===this)closeDeleteAccountModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeDeleteAccountModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:8px;color:#FF4444;">Delete Account</h3>
+    <p style="font-size:13px;color:#666;margin-bottom:16px;">Balances, cards, listings forfeited. 30-day recovery window.</p>
+    <div class="form-group"><label>Type DELETE</label><div class="input-wrapper"><span class="material-icons">warning</span><input type="text" id="deleteConfirmInput" placeholder="DELETE" /></div></div>
+    <button class="btn-danger" onclick="confirmDeleteAccount()">Schedule Deletion</button>
+  </div>
+</div>
+
+<!-- LANGUAGE MODAL -->
+<div class="modal-overlay" id="languageModal" onclick="if(event.target===this)closeLanguageModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeLanguageModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:8px;">Choose Language</h3>
+    <p style="font-size:13px;color:#999;margin-bottom:16px;">App translates automatically using AI.</p>
+    <div id="languageList" style="max-height:60vh;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- SELL MODAL -->
+<div class="modal-overlay" id="sellModal" onclick="if(event.target===this)closeSellModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeSellModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:8px;" id="sellTitle">List Card for Sale</h3>
+    <div id="sellBody"></div>
+  </div>
+</div>
+
+<!-- BULK SELL MODAL -->
+<div class="modal-overlay" id="bulkSellModal" onclick="if(event.target===this)closeBulkSellModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeBulkSellModal()"><span class="material-icons">close</span></button>
+    <h3 style="font-size:20px;font-weight:800;margin-bottom:8px;">Bulk Sell</h3>
+    <div id="bulkSellBody"></div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- SCRIPTS -->
+<!-- ============================================== -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Payment Gateways -->
+<script src="https://js.paystack.co/v1/inline.js"></script>
+<script src="https://checkout.flutterwave.com/v3.js"></script>
+
+<!-- App Scripts -->
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

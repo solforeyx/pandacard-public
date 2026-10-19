@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Bamboo View — Panda Card</title>
+  <meta name="theme-color" content="#0D0D1A" />
+  <meta name="description" content="Live demand monitoring for Panda Card. See real card prices, demand, listings, and activity." />
+  <link rel="icon" type="image/png" href="https://i.imgur.com/9aLmHyS.png" />
+  <link rel="apple-touch-icon" href="https://i.imgur.com/9aLmHyS.png" />
+  <link rel="manifest" href="manifest.json" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    body { background: #0D0D1A; color: #FFFFFF; }
+    .app-container { background: #0D0D1A; padding-bottom: 80px; }
+    .header {
+      background: #12122A;
+      border-bottom: 1px solid #1E1E3A;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .header .back { display: flex; align-items: center; gap: 4px; color: #FFFFFF; font-weight: 600; font-size: 14px; cursor: pointer; text-decoration: none; }
+    .header .back .material-icons { font-size: 20px; }
+    .header .title { font-size: 18px; font-weight: 800; }
+    .header .title span { color: #FFD700; }
+    .header select { background: #1A1A3E; color: #FFD700; border: 1px solid #2A2A4E; border-radius: 8px; padding: 4px 8px; font-size: 11px; font-family: 'Poppins', sans-serif; cursor: pointer; }
+    .container { padding: 12px; max-width: 500px; margin: 0 auto; }
+    .sentiment-card { background: linear-gradient(135deg, #1A1A3E, #12122A); border: 1px solid #1E1E3A; border-radius: 16px; padding: 20px; margin-bottom: 12px; text-align: center; color: #FFFFFF; }
+    .sentiment-card .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+    .sentiment-card .value { font-size: 32px; font-weight: 900; margin: 4px 0; }
+    .sentiment-card .value.bullish { color: #22C55E; }
+    .sentiment-card .value.bearish { color: #FF4444; }
+    .sentiment-card .value.neutral { color: #FFD700; }
+    .sentiment-card .bar-container { display: flex; height: 6px; border-radius: 6px; overflow: hidden; margin: 12px 0 8px; background: rgba(255,255,255,0.05); }
+    .sentiment-card .bullish-bar { height: 100%; background: #22C55E; transition: width 0.5s; }
+    .sentiment-card .bearish-bar { height: 100%; background: #FF4444; transition: width 0.5s; }
+    .sentiment-card .labels { display: flex; justify-content: space-between; font-size: 11px; color: #888; }
+    .sentiment-card .labels .bullish-label { color: #22C55E; }
+    .sentiment-card .labels .bearish-label { color: #FF4444; }
+    .card-selector { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px; scrollbar-width: none; }
+    .card-selector::-webkit-scrollbar { display: none; }
+    .card-selector .chip { flex-shrink: 0; padding: 8px 14px; border-radius: 20px; background: #1A1A3E; font-size: 12px; font-weight: 600; color: #888; border: 1px solid #2A2A4E; cursor: pointer; font-family: 'Poppins', sans-serif; white-space: nowrap; transition: all 0.2s; }
+    .card-selector .chip.active { background: #FFD700; color: #1A1A2E; border-color: #FFD700; }
+    .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
+    .status-dot.hot { background: #FF4444; }
+    .status-dot.cold { background: #4A90D9; }
+    .status-dot.neutral { background: #888; }
+    .status-dot.vip { background: #FFD700; }
+    .chart-card { background: #12122A; border: 1px solid #1E1E3A; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+    .chart-card .chart-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 16px; font-weight: 700; }
+    .chart-card .chart-title .status { font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 12px; }
+    .chart-card .chart-title .status.hot { background: rgba(255,68,68,0.2); color: #FF4444; }
+    .chart-card .chart-title .status.neutral { background: rgba(136,136,136,0.2); color: #888; }
+    .chart-card .chart-title .status.cold { background: rgba(74,144,217,0.2); color: #4A90D9; }
+    .chart-card .chart-title .status.vip { background: rgba(255,215,0,0.2); color: #FFD700; }
+    .price-row { display: flex; justify-content: space-between; align-items: flex-end; padding: 8px 0; border-bottom: 1px solid #1E1E3A; margin-bottom: 8px; }
+    .price-row .current-price { font-size: 28px; font-weight: 900; }
+    .price-row .change { font-size: 16px; font-weight: 700; }
+    .price-row .change.up { color: #22C55E; }
+    .price-row .change.down { color: #FF4444; }
+    .chart-wrapper { height: 250px; width: 100%; position: relative; }
+    .time-filters { display: flex; gap: 4px; margin-top: 12px; background: #0D0D1A; border-radius: 10px; padding: 3px; }
+    .time-filters .tf-btn { flex: 1; padding: 8px 0; border-radius: 8px; font-size: 11px; font-weight: 600; color: #888; background: transparent; border: none; cursor: pointer; font-family: 'Poppins', sans-serif; transition: all 0.2s; }
+    .time-filters .tf-btn.active { background: #FFD700; color: #1A1A2E; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 10px 0; }
+    .stats-grid .stat-box { background: #0D0D1A; padding: 10px 8px; border-radius: 10px; text-align: center; border: 1px solid #1E1E3A; }
+    .stats-grid .stat-box .value { font-size: 15px; font-weight: 800; color: #FFFFFF; }
+    .stats-grid .stat-box .value.gold { color: #FFD700; }
+    .stats-grid .stat-box .label { font-size: 9px; color: #666; text-transform: uppercase; margin-top: 2px; }
+    .demand-monitor { background: #12122A; border: 1px solid #1E1E3A; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+    .demand-monitor h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #FFFFFF; }
+    .demand-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1E1E3A; font-size: 12px; }
+    .demand-row:last-child { border-bottom: none; }
+    .demand-row .lbl { color: #888; }
+    .demand-row .val { color: #FFD700; font-weight: 700; }
+    .pie-section { background: #12122A; border: 1px solid #1E1E3A; border-radius: 16px; padding: 16px; margin-bottom: 12px; text-align: center; }
+    .pie-section .section-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; text-align: left; color: #FFFFFF; }
+    .pie-chart { width: 160px; height: 160px; border-radius: 50%; margin: 0 auto; position: relative; background: conic-gradient(#FF4444 0% 25%, #888 25% 50%, #4A90D9 50% 75%, #FFD700 75% 100%); }
+    .pie-chart .center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; border-radius: 50%; background: #12122A; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .pie-chart .center .number { font-size: 20px; font-weight: 800; color: #FFFFFF; }
+    .pie-chart .center .label { font-size: 9px; color: #888; }
+    .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+    .legend .item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #999; }
+    .legend .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot.hot-dot { background: #FF4444; }
+    .dot.neutral-dot { background: #888; }
+    .dot.cold-dot { background: #4A90D9; }
+    .dot.vip-dot { background: #FFD700; }
+    .bar-section { background: #12122A; border: 1px solid #1E1E3A; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+    .bar-section .section-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #FFFFFF; }
+    .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .bar-row .bar-label { width: 50px; font-size: 11px; font-weight: 600; color: #ccc; flex-shrink: 0; }
+    .bar-row .bar-track { flex: 1; height: 20px; background: #0D0D1A; border-radius: 5px; overflow: hidden; }
+    .bar-row .bar-fill { height: 100%; border-radius: 5px; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; font-size: 9px; font-weight: 700; color: #fff; }
+    .bar-row .bar-fill.green { background: linear-gradient(90deg, #22C55E, #16A34A); }
+    .bar-row .bar-fill.red { background: linear-gradient(90deg, #FF4444, #DC2626); }
+    .bar-row .bar-percent { width: 40px; font-size: 11px; font-weight: 700; text-align: right; flex-shrink: 0; }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: #12122A; border-top: 1px solid #1E1E3A; display: flex; justify-content: space-around; padding: 6px 0 env(safe-area-inset-bottom); z-index: 100; max-width: 500px; margin: 0 auto; }
+    .bottom-nav a { display: flex; flex-direction: column; align-items: center; color: #666; font-size: 10px; font-weight: 500; padding: 4px 12px; border-radius: 8px; text-decoration: none; }
+    .bottom-nav a .nav-icon { font-size: 22px; }
+    .bottom-nav a.active { color: #FFD700; }
+    .bottom-nav a.active .nav-icon { color: #FFD700; }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="header">
+      <a href="app.html" class="back"><span class="material-icons">arrow_back</span> Back</a>
+      <div class="title">Bamboo<span>View</span></div>
+      <select id="bambooCurrency" onchange="changeBambooCurrency()">
+        <option value="NGN">NGN</option>
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+        <option value="GBP">GBP</option>
+        <option value="GHS">GHS</option>
+        <option value="KES">KES</option>
+        <option value="ZAR">ZAR</option>
+        <option value="EGP">EGP</option>
+      </select>
+    </div>
+
+    <div class="container">
+      <div class="sentiment-card">
+        <div class="label">Market Sentiment</div>
+        <div class="value bullish" id="sentimentValue">Loading...</div>
+        <div class="bar-container">
+          <div class="bullish-bar" id="bullishBar" style="width:50%;"></div>
+          <div class="bearish-bar" id="bearishBar" style="width:50%;"></div>
+        </div>
+        <div class="labels">
+          <span class="bullish-label" id="bullishLabel">Bullish 50%</span>
+          <span class="bearish-label" id="bearishLabel">Bearish 50%</span>
+        </div>
+      </div>
+
+      <div class="card-selector" id="cardSelector"></div>
+
+      <div class="chart-card">
+        <div class="chart-title">
+          <span id="cardName">Select a Card</span>
+          <span class="status neutral" id="cardStatus">Neutral</span>
+        </div>
+        <div class="price-row">
+          <span class="current-price" id="cardPrice">₦0</span>
+          <span class="change" id="cardChange">+0%</span>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="bambooChart"></canvas>
+        </div>
+        <div class="time-filters">
+          <button class="tf-btn active" onclick="bambooChangeTimeframe(7, this)">7D</button>
+          <button class="tf-btn" onclick="bambooChangeTimeframe(14, this)">14D</button>
+          <button class="tf-btn" onclick="bambooChangeTimeframe(30, this)">30D</button>
+          <button class="tf-btn" onclick="bambooChangeTimeframe(60, this)">60D</button>
+          <button class="tf-btn" onclick="bambooChangeTimeframe(90, this)">90D</button>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-box"><div class="value" id="cardHigh">₦0</div><div class="label">Ceiling</div></div>
+          <div class="stat-box"><div class="value" id="cardLow">₦0</div><div class="label">Floor</div></div>
+          <div class="stat-box"><div class="value gold" id="cardVolume">0</div><div class="label">Demand</div></div>
+        </div>
+      </div>
+
+      <div class="demand-monitor">
+        <h3>Demand &amp; Activity</h3>
+        <div class="demand-row"><span class="lbl">Unique demanders</span><span class="val" id="bambooUniqueDemand">0</span></div>
+        <div class="demand-row"><span class="lbl">Total demand requests</span><span class="val" id="bambooTotalDemand">0</span></div>
+        <div class="demand-row"><span class="lbl">Active trade listings</span><span class="val" id="bambooListings">0</span></div>
+        <div class="demand-row"><span class="lbl">Purchases (7d)</span><span class="val" id="bambooPurchases">0</span></div>
+        <div class="demand-row"><span class="lbl">Daily Combo assignments</span><span class="val" id="bambooComboAssign">0</span></div>
+        <div class="demand-row"><span class="lbl">Available supply</span><span class="val" id="bambooSupply">0</span></div>
+      </div>
+
+      <div class="pie-section">
+        <div class="section-title">Card Distribution</div>
+        <div class="pie-chart" id="pieChart">
+          <div class="center">
+            <span class="number" id="pieTotal">0</span>
+            <span class="label">Cards</span>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="item"><span class="dot hot-dot"></span> Hot (<span id="pieHot">0</span>)</div>
+          <div class="item"><span class="dot neutral-dot"></span> Neutral (<span id="pieNeutral">0</span>)</div>
+          <div class="item"><span class="dot cold-dot"></span> Cold (<span id="pieCold">0</span>)</div>
+          <div class="item"><span class="dot vip-dot"></span> VIP (<span id="pieVip">0</span>)</div>
+        </div>
+      </div>
+
+      <div class="bar-section">
+        <div class="section-title">Top Movers</div>
+        <div id="moversBar"></div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="bottom-nav">
+    <a href="app.html"><span class="nav-icon material-icons">home</span>Home</a>
+    <a href="app.html#trade"><span class="nav-icon material-icons">compare_arrows</span>Trade</a>
+    <a href="app.html#wallet"><span class="nav-icon material-icons">account_balance_wallet</span>Wallet</a>
+    <a href="bamboo-view.html" class="active"><span class="nav-icon material-icons">analytics</span>Charts</a>
+    <a href="app.html#profile"><span class="nav-icon material-icons">person</span>Profile</a>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/bamboo.js"></script>
+
+  <script>
+    // Public page — never show demo banner or demo mode
+    window.applyModeUI = function () {};
+    document.addEventListener('DOMContentLoaded', function () {
+      var b = document.getElementById('demoBanner');
+      if (b) b.remove();
+      document.body.classList.remove('demo-mode');
+    });
+  </script>
+
+</body>
+</html>
