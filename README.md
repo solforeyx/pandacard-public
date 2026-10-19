@@ -1,2 +1,0 @@
-# pandacard-public
-pandacard trading
