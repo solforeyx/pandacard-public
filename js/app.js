@@ -18,7 +18,7 @@ if ('serviceWorker' in navigator) {
 
 // PWA INSTALL PROMPT VARIABLES
 let deferredPrompt = null;
-const INSTALL_COOLDOWN_MS = 5 * 60 * 60 * 1000; // 5 hours
+const INSTALL_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 const APP = {
   user: null,
@@ -165,7 +165,7 @@ function closeSidebar() {
 }
 
 // ============================================================
-// PWA INSTALL LOGIC (WITH 5-HOUR COOLDOWN)
+// PWA INSTALL LOGIC (WITH 12-HOUR COOLDOWN & DIRECT APK)
 // ============================================================
 function isPWAInstalled() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
@@ -181,21 +181,14 @@ function installPWA() {
         hideInstallUI();
       } else {
         console.log('User dismissed the install prompt');
-        // Save the dismissal time to enforce the 5-hour cooldown
         localStorage.setItem('pwa_prompt_dismissed', Date.now());
       }
       deferredPrompt = null;
     });
   } else {
-    // Fallback ONLY if Chrome hasn't fired the native event yet
-    document.getElementById('installModal').classList.add('open');
+    // If native prompt isn't ready, redirect directly to the APK
+    window.location.href = '/PandaCard.apk';
   }
-}
-
-function closeInstallModal() {
-  document.getElementById('installModal').classList.remove('open');
-  // Save the dismissal time to enforce the 5-hour cooldown
-  localStorage.setItem('pwa_prompt_dismissed', Date.now());
 }
 
 function hideInstallUI() {
@@ -2412,7 +2405,7 @@ async function boot() {
       const headerBtn = document.getElementById('pwaInstallBtn');
       if (headerBtn) headerBtn.style.display = 'block';
       
-      // Check 5-hour cooldown before auto-prompting
+      // Check 12-hour cooldown before auto-prompting
       const lastDismissed = localStorage.getItem('pwa_prompt_dismissed');
       const now = Date.now();
       
