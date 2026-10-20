@@ -1143,6 +1143,11 @@
           hideLoading();
           showToast(result.error, 'error');
           playSound('error');
+          
+          // 🚨 FIX: If they somehow get a duplicate key, tell them to log in
+          if (result.error.toLowerCase().includes('duplicate') || result.error.toLowerCase().includes('already')) {
+            setTimeout(() => switchTab('login'), 1500);
+          }
           return;
         }
 
@@ -1347,10 +1352,12 @@
       if (!sb) return;
 
       try {
+        const fullName = pendingGoogleUser.user_metadata?.full_name || pendingGoogleUser.email.split('@')[0];
+        
         await sb.from('users').upsert({
           id: pendingGoogleUser.id,
           email: pendingGoogleUser.email,
-          full_name: pendingGoogleUser.user_metadata && pendingGoogleUser.user_metadata.full_name ? pendingGoogleUser.user_metadata.full_name : 'User',
+          full_name: fullName,
           username: username,
           country: countryName,
           country_code: countryCode,
