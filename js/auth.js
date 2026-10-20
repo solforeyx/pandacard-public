@@ -32,15 +32,20 @@ function demoCreateAccount(data) {
     return { error: 'An account with this email already exists' };
   }
 
+  // Add fallbacks for missing form data
+  const email = data.email.toLowerCase();
+  const fullName = data.fullName || email.split('@')[0];
+  const username = data.username || email.split('@')[0] + '_' + Math.floor(1000 + Math.random() * 9000);
+
   const now = Date.now();
   const account = {
     id: generateId('demo'),
-    email: data.email.toLowerCase(),
+    email: email,
     passwordHash: demoHashPassword(data.password),
-    fullName: data.fullName,
-    username: data.username,
-    country: data.country,
-    countryCode: data.countryCode || '',
+    fullName: fullName,
+    username: username,
+    country: data.country || 'Nigeria',
+    countryCode: data.countryCode || 'NG',
     currency: data.currency || 'NGN',
     currencySymbol: getCurrencySymbol(data.currency || 'NGN'),
     dob: data.dob || '',
@@ -148,21 +153,27 @@ async function liveSignup(data) {
   const sb = getSupabase();
   if (!sb) return { error: 'Supabase not available' };
 
+  // 🚨 FALLBACKS: Prevent blank profiles if auth.html form is missing data
+  const email = data.email.toLowerCase();
+  const fullName = data.fullName || email.split('@')[0];
+  const username = data.username || email.split('@')[0] + '_' + Math.floor(1000 + Math.random() * 9000);
+
   const { data: authData, error: authError } = await sb.auth.signUp({
-    email: data.email.toLowerCase(),
+    email: email,
     password: data.password
   });
 
   if (authError) return { error: authError.message };
   if (!authData.user) return { error: 'Signup failed' };
 
-  const { error: profileError } = await sb.from('users').insert({
+  // 🚨 UPSERT: Prevents duplicate key errors if a trigger exists
+  const { error: profileError } = await sb.from('users').upsert({
     id: authData.user.id,
-    email: data.email.toLowerCase(),
-    full_name: data.fullName,
-    username: data.username,
-    country: data.country,
-    country_code: data.countryCode || '',
+    email: email,
+    full_name: fullName,
+    username: username,
+    country: data.country || 'Nigeria',
+    country_code: data.countryCode || 'NG',
     currency: data.currency || 'NGN',
     dob: data.dob || null,
     phone: data.phone || null,
@@ -178,12 +189,15 @@ async function liveSignup(data) {
     lifetime_withdrawn: 0
   });
 
-  if (profileError) return { error: profileError.message };
+  if (profileError) {
+    console.error("Profile creation failed in Supabase:", profileError);
+    return { error: profileError.message };
+  }
 
   // Trigger Brevo Live List (List ID: 8) for Automated Welcome Email
   try {
     sb.functions.invoke('welcome-email', { 
-      body: { email: data.email.toLowerCase(), name: data.fullName } 
+      body: { email: email, name: fullName } 
     }).catch((err) => console.log('Brevo Live sync failed:', err));
   } catch (e) {
     console.error('Failed to invoke Brevo function', e);
@@ -221,7 +235,10 @@ async function liveGetProfile(userId) {
   const sb = getSupabase();
   if (!sb) return null;
   const { data, error } = await sb.from('users').select('*').eq('id', userId).single();
-  if (error) return null;
+  if (error) {
+    console.warn("Could not fetch profile:", error.message);
+    return null;
+  }
   return data;
 }
 
@@ -245,11 +262,11 @@ async function login(email, password) {
 async function logout() {
   if (isDemo()) {
     demoLogout();
-    window.location.href = 'auth.html'; // FIXED: Forces redirect to login page
+    window.location.href = 'auth.html'; 
     return { success: true };
   }
   await liveLogout();
-  window.location.href = 'auth.html'; // FIXED: Forces redirect to login page
+  window.location.href = 'auth.html'; 
   return { success: true };
 }
 
@@ -334,7 +351,6 @@ async function setPin(pin) {
   const user = await liveGetUser();
   if (!user) return { error: 'Not logged in' };
 
-  // PIN stored hashed — simplified here
   const { error } = await sb.from('users').update({ pin_hash: demoHashPassword(pin) }).eq('id', user.id);
   if (error) return { error: error.message };
   return { success: true };
