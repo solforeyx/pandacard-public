@@ -75,8 +75,8 @@
     <div class="brand">Panda<span>Card</span></div>
   </div>
   <div class="right">
-    <!-- PWA INSTALL BUTTON (Hidden by default until prompt is ready) -->
-    <button id="pwaInstallBtn" style="display:none; background:#FFD700; color:#1A1A2E; border:none; padding:6px 12px; border-radius:20px; font-weight:800; font-size:11px; cursor:pointer; margin-right:8px; font-family:'Poppins', sans-serif; box-shadow:0 2px 8px rgba(255,215,0,0.4);" onclick="installPWA()">Install App</button>
+    <!-- PWA INSTALL BUTTON (Visible by default, hidden via JS if already installed) -->
+    <button id="pwaInstallBtn" style="background:#FFD700; color:#1A1A2E; border:none; padding:6px 12px; border-radius:20px; font-weight:800; font-size:11px; cursor:pointer; margin-right:8px; font-family:'Poppins', sans-serif; box-shadow:0 2px 8px rgba(255,215,0,0.4);" onclick="installPWA()">Install App</button>
     
     <span class="badge-container" onclick="navigateTo('notifications')">
       <span class="material-icons">notifications</span>
@@ -355,7 +355,7 @@
       <div class="section-header" style="margin-top:12px;"><h2>Settings</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
       
       <!-- PWA INSTALL ROW -->
-      <div class="section" id="settingsInstallRow" style="display:none;">
+      <div class="section" id="settingsInstallRow">
         <div class="settings-item" onclick="installPWA()">
           <div class="left"><span class="material-icons" style="color:#FFD700;">get_app</span><span class="label" style="color:#FFD700; font-weight:700;">Install Panda App</span></div>
           <div class="right"><span class="material-icons" style="color:#FFD700;">chevron_right</span></div>
@@ -702,6 +702,20 @@
     <button class="modal-close" onclick="closeBulkSellModal()"><span class="material-icons">close</span></button>
     <h3 style="font-size:20px;font-weight:800;margin-bottom:8px;">Bulk Sell</h3>
     <div id="bulkSellBody"></div>
+  </div>
+</div>
+
+<!-- CUSTOM PWA INSTALL INSTRUCTION MODAL (Fallback) -->
+<div class="modal-overlay" id="installModal" onclick="if(event.target===this)closeInstallModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeInstallModal()"><span class="material-icons">close</span></button>
+    <div style="text-align:center; padding-bottom: 20px;">
+      <span class="material-icons" style="font-size:48px;color:#FFD700;">get_app</span>
+      <h3 style="font-size:20px;font-weight:800;margin-top:8px;">Install Panda Card</h3>
+      <p style="font-size:14px;color:#666;margin-top:8px;line-height:1.6;">To install the app on your phone, tap the <b>Menu button</b> (the three dots ⋮ or the share icon) in your browser and select <b>"Add to Home Screen"</b> or <b>"Install App"</b>.</p>
+      <button class="btn-primary" style="margin-top:20px;" onclick="closeInstallModal()">Got it</button>
+    </div>
   </div>
 </div>
 
