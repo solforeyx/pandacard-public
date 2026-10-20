@@ -5,8 +5,9 @@
 // 🔴 REPLACE THIS WITH YOUR ACTUAL VAPID PUBLIC KEY
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
 
-// PWA INSTALL PROMPT
+// PWA INSTALL PROMPT VARIABLES
 let deferredPrompt = null;
+const INSTALL_COOLDOWN_MS = 5 * 60 * 60 * 1000; // 5 hours
 
 const APP = {
   user: null,
@@ -153,23 +154,37 @@ function closeSidebar() {
 }
 
 // ============================================================
-// PWA INSTALL LOGIC
+// PWA INSTALL LOGIC (WITH 5-HOUR COOLDOWN)
 // ============================================================
+function isPWAInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
 function installPWA() {
-  if (!deferredPrompt) {
-    showToast('Install prompt not available yet. Please try again later.', 'info');
-    return;
+  // If the browser is ready to install, show the native prompt
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+        hideInstallUI();
+      } else {
+        console.log('User dismissed the install prompt');
+        // Save the dismissal time to enforce the 5-hour cooldown
+        localStorage.setItem('pwa_prompt_dismissed', Date.now());
+      }
+      deferredPrompt = null;
+    });
+  } else {
+    // If the native prompt isn't ready (or unsupported, like on iOS), show the instruction modal
+    document.getElementById('installModal').classList.add('open');
   }
-  deferredPrompt.prompt();
-  deferredPrompt.userChoice.then((choiceResult) => {
-    if (choiceResult.outcome === 'accepted') {
-      console.log('User accepted the A2HS prompt');
-      hideInstallUI();
-    } else {
-      console.log('User dismissed the A2HS prompt');
-    }
-    deferredPrompt = null;
-  });
+}
+
+function closeInstallModal() {
+  document.getElementById('installModal').classList.remove('open');
+  // Save the dismissal time to enforce the 5-hour cooldown
+  localStorage.setItem('pwa_prompt_dismissed', Date.now());
 }
 
 function hideInstallUI() {
@@ -354,13 +369,15 @@ function renderChecklist() {
   const learnDone = items.learn || false;
   const annDone = items.announcement || false;
   const buyDone = items.buy || false;
+  const installDone = isPWAInstalled();
 
-  if (rewardDone && depositDone && learnDone && annDone && buyDone && pinDone) {
+  if (rewardDone && depositDone && learnDone && annDone && buyDone && pinDone && installDone) {
     el.innerHTML = '';
     return;
   }
 
   const rows = [
+    { key: 'install', label: 'Install the Panda App', action: "installPWA()", done: installDone },
     { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone },
     { key: 'reward', label: 'Claim your daily reward', action: "navigateTo('dailyreward')", done: rewardDone },
     { key: 'deposit', label: 'Make your first deposit', action: "navigateTo('wallet')", done: depositDone },
@@ -2376,22 +2393,37 @@ async function boot() {
 
   // PWA INSTALL LISTENER
   window.addEventListener('beforeinstallprompt', (e) => {
-    // Prevent the mini-infobar from appearing on mobile
     e.preventDefault();
-    // Stash the event so it can be triggered later.
     deferredPrompt = e;
     
-    // Update UI notify the user they can install the PWA
-    const headerBtn = document.getElementById('pwaInstallBtn');
-    if (headerBtn) headerBtn.style.display = 'block';
-    const settingsRow = document.getElementById('settingsInstallRow');
-    if (settingsRow) settingsRow.style.display = 'block';
+    // Show the button if not installed
+    if (!isPWAInstalled()) {
+      const headerBtn = document.getElementById('pwaInstallBtn');
+      if (headerBtn) headerBtn.style.display = 'block';
+      
+      // Check 5-hour cooldown before auto-prompting
+      const lastDismissed = localStorage.getItem('pwa_prompt_dismissed');
+      const now = Date.now();
+      
+      if (!lastDismissed || (now - parseInt(lastDismissed)) > INSTALL_COOLDOWN_MS) {
+        // Wait 2 seconds so it doesn't overlap with page load animations
+        setTimeout(() => {
+          if (!isPWAInstalled()) installPWA();
+        }, 2000);
+      }
+    }
   });
 
   window.addEventListener('appinstalled', (evt) => {
     hideInstallUI();
+    localStorage.removeItem('pwa_prompt_dismissed'); // Clear cooldown
     showToast('App installed successfully!', 'success');
   });
+
+  // Hide install UI if already installed
+  if (isPWAInstalled()) {
+    hideInstallUI();
+  }
 
   try {
     await loadExchangeRates();
@@ -2516,3 +2548,4 @@ window.dismissWelcome = dismissWelcome;
 window.logout = logout;
 window.subscribeUserToPush = subscribeUserToPush;
 window.installPWA = installPWA;
+window.closeInstallModal = closeInstallModal;
