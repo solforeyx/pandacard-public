@@ -172,7 +172,6 @@ function isPWAInstalled() {
 }
 
 function installPWA() {
-  // If the browser is ready to install, show the native prompt
   if (deferredPrompt) {
     deferredPrompt.prompt();
     deferredPrompt.userChoice.then((choiceResult) => {
@@ -186,7 +185,7 @@ function installPWA() {
       deferredPrompt = null;
     });
   } else {
-    // If native prompt isn't ready, redirect directly to the APK
+    // Force direct APK download if Chrome prompt fails
     window.location.href = '/PandaCard.apk';
   }
 }
@@ -210,7 +209,6 @@ async function updateNotificationBadge() {
     const s = Demo.state();
     count = s?.notifications?.filter(n => !n.read).length || 0;
   } else {
-    // Fetch live count from Supabase
     const { count: liveCount } = await getSupabase()
       .from('notifications')
       .select('*', { count: 'exact', head: true })
@@ -221,8 +219,6 @@ async function updateNotificationBadge() {
   
   badge.textContent = count > 99 ? '99+' : String(count);
   badge.classList.toggle('show', count > 0);
-  
-  // Update the home screen icon badge
   updateAppBadge(count);
 }
 
@@ -339,17 +335,21 @@ function renderBannerAlerts() {
   if (!el) return;
   el.innerHTML = '';
 
-  if (isDemo()) {
-    const welcomeSeen = localStorage.getItem('pandacard_welcome_seen');
-    if (!welcomeSeen) {
-      el.innerHTML = `
-        <div class="banner-alert info" style="margin-bottom:12px;">
-          <span class="material-icons">celebration</span>
-          <span class="banner-text">Welcome to Panda Card, ${escapeHtml(APP.user?.displayName || 'trader')}! You're in Demo Mode — explore freely.</span>
-          <button class="banner-dismiss" onclick="dismissWelcome()">&times;</button>
-        </div>
-      `;
+  const welcomeSeen = localStorage.getItem('pandacard_welcome_seen');
+  if (!welcomeSeen) {
+    let name = 'trader';
+    if (isDemo()) {
+      name = Demo.account()?.fullName || 'trader';
+    } else {
+      name = APP.profile?.full_name || 'trader';
     }
+    el.innerHTML = `
+      <div class="banner-alert info" style="margin-bottom:12px;">
+        <span class="material-icons">celebration</span>
+        <span class="banner-text">Welcome to Panda Card, ${escapeHtml(name)}! ${isDemo() ? "You're in Demo Mode — explore freely." : "Your account is ready. Start trading!"}</span>
+        <button class="banner-dismiss" onclick="dismissWelcome()">&times;</button>
+      </div>
+    `;
   }
 }
 
@@ -362,33 +362,46 @@ function dismissWelcome() {
 function renderChecklist() {
   const el = document.getElementById('checklistCard');
   if (!el) return;
-  if (!isDemo()) { el.innerHTML = ''; return; }
-  const s = Demo.state();
-  if (!s) { el.innerHTML = ''; return; }
   
-  const items = s.checklist || {};
-  const pinDone = items.pin || !!s.pin;
-  const rewardDone = items.reward || false;
-  const depositDone = items.deposit || false;
-  const learnDone = items.learn || false;
-  const annDone = items.announcement || false;
-  const buyDone = items.buy || false;
+  let items = {};
+  let pinDone = false;
+
+  if (isDemo()) {
+    const s = Demo.state();
+    if (!s) { el.innerHTML = ''; return; }
+    items = s.checklist || {};
+    pinDone = items.pin || !!s.pin;
+  } else {
+    pinDone = !!APP.profile?.pin_hash;
+    items = { reward: false, deposit: false, learn: false, announcement: false, buy: false }; 
+  }
+  
   const installDone = isPWAInstalled();
 
-  if (rewardDone && depositDone && learnDone && annDone && buyDone && pinDone && installDone) {
+  if (isDemo() && items.reward && items.deposit && items.learn && items.announcement && items.buy && pinDone && installDone) {
+    el.innerHTML = '';
+    return;
+  }
+
+  if (!isDemo() && pinDone && installDone) {
     el.innerHTML = '';
     return;
   }
 
   const rows = [
     { key: 'install', label: 'Install the Panda App', action: "installPWA()", done: installDone },
-    { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone },
-    { key: 'reward', label: 'Claim your daily reward', action: "navigateTo('dailyreward')", done: rewardDone },
-    { key: 'deposit', label: 'Make your first deposit', action: "navigateTo('wallet')", done: depositDone },
-    { key: 'learn', label: 'Learn how the app works', action: "navigateTo('live')", done: learnDone },
-    { key: 'announcement', label: 'Check latest announcements', action: "navigateTo('announcements')", done: annDone },
-    { key: 'buy', label: 'Buy your first card', action: "navigateTo('trade')", done: buyDone }
+    { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone }
   ];
+
+  if (isDemo()) {
+    rows.push(
+      { key: 'reward', label: 'Claim your daily reward', action: "navigateTo('dailyreward')", done: items.reward },
+      { key: 'deposit', label: 'Make your first deposit', action: "navigateTo('wallet')", done: items.deposit },
+      { key: 'learn', label: 'Learn how the app works', action: "navigateTo('live')", done: items.learn },
+      { key: 'announcement', label: 'Check latest announcements', action: "navigateTo('announcements')", done: items.announcement },
+      { key: 'buy', label: 'Buy your first card', action: "navigateTo('trade')", done: items.buy }
+    );
+  }
 
   el.innerHTML = `
     <div class="checklist-card">
@@ -585,7 +598,7 @@ function renderCardTile(card, inv) {
 function startLongPress(cardId) {
   cancelLongPress();
   const inv = getInventory();
-  if (!inv[cardId] || inv[cardId] <= 0) return; // only owned cards selectable
+  if (!inv[cardId] || inv[cardId] <= 0) return;
   APP.longPressTimer = setTimeout(() => {
     toggleBulkSelect(cardId);
     playSound('click');
@@ -1265,7 +1278,6 @@ async function startMining() {
       loadMining();
       updateBalanceUI();
     } catch (err) {
-      // This is where the backend message "You cannot mine Trade-bought cards" will appear
       showToast(err.message, 'error');
     } finally {
       hideLoading();
@@ -1307,13 +1319,11 @@ async function startMining() {
 // ============================================================
 async function loadDailyCombo() {
   if (!isDemo()) {
-    // LIVE MODE COMBO
     const sb = getSupabase();
     if (!sb) return;
     const today = new Date().toISOString().slice(0, 10);
     const { data: combos } = await sb.from('daily_combo').select('*').eq('user_id', APP.user.id).eq('combo_date', today).limit(1);
     
-    // Add Progress Bar for Live Mode
     const progEl = document.getElementById('comboProgress');
     if (progEl) {
       progEl.innerHTML = Array.from({ length: 5 }, (_, i) => {
@@ -1416,7 +1426,6 @@ async function loadDailyCombo() {
 
 async function completeDailyCombo(comboId) {
   if (!isDemo()) {
-    // LIVE MODE COMBO
     showLoading('Completing combo...');
     try {
       const { data, error } = await getSupabase().functions.invoke('daily-combo', { body: { action: 'complete', comboId } });
@@ -1492,7 +1501,6 @@ async function renderWalletHistory() {
   if (!el) return;
   
   if (!isDemo()) {
-    // LIVE MODE TRANSACTIONS
     const { data } = await getSupabase().from('transactions').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(10);
     if (!data || !data.length) { el.textContent = 'No recent transactions.'; return; }
     el.innerHTML = data.map(tx => `<div class="bank-info" style="padding:8px 0;"><span class="label" style="text-transform:capitalize;">${escapeHtml(tx.type.replace('_', ' '))}</span><span class="value">${tx.amount ? formatPrice(Math.abs(tx.amount)) : '—'}</span></div>`).join('');
@@ -1963,7 +1971,6 @@ async function loadNotifications() {
   if (isDemo()) {
     notifs = Demo.state()?.notifications || [];
   } else {
-    // LIVE MODE NOTIFICATIONS
     const { data } = await getSupabase().from('notifications').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(50);
     notifs = (data || []).map(n => ({
       id: n.id,
@@ -1989,7 +1996,6 @@ async function loadNotifications() {
       </div>
     </div>`).join('');
   
-  // Refresh badge count
   updateNotificationBadge();
 }
 
@@ -2088,7 +2094,7 @@ async function loadAnnouncements() {
       .order('created_at', { ascending: false });
       
     if (data && data.length > 0) {
-      if (hardcoded) hardcoded.style.display = 'none'; // Permanently hides it
+      if (hardcoded) hardcoded.style.display = 'none';
       
       const dynamicHtml = data.map(a => `
         <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);border-left:4px solid #22C55E;">
@@ -2179,7 +2185,6 @@ async function loadDailyReward() {
 
     renderRewardCalendar(history, s.createdAt || Date.now(), today);
   } else {
-    // LIVE MODE DAILY REWARD
     const btn = document.getElementById('claimRewardBtn');
     const { data: profile } = await getSupabase().from('users').select('last_daily_claim').eq('id', APP.user.id).single();
     const today = new Date().toISOString().slice(0, 10);
@@ -2249,7 +2254,6 @@ async function claimDailyReward() {
     loadDailyReward();
     updateBalanceUI();
   } else {
-    // LIVE MODE DAILY REWARD
     showLoading('Claiming...');
     try {
       const { data, error } = await getSupabase().functions.invoke('claim-daily-reward');
@@ -2305,16 +2309,33 @@ async function buyCoins(costNgn, coinsAmount) {
 // WELCOME
 // ============================================================
 function sendWelcomeNotification() {
-  if (!isDemo()) return;
-  const s = Demo.state();
-  if (!s) return;
-  if (s.welcomeSent) return;
-  Demo.update(st => { st.welcomeSent = true; });
-  Demo.notify(
-    'Welcome to Panda Card',
-    'You are in Demo Mode. Deposit to explore, buy cards, mine, and earn DP. Everything is simulated — no real money at risk.',
-    'info'
-  );
+  if (isDemo()) {
+    const s = Demo.state();
+    if (!s) return;
+    if (s.welcomeSent) return;
+    Demo.update(st => { st.welcomeSent = true; });
+    Demo.notify(
+      'Welcome to Panda Card',
+      'You are in Demo Mode. Deposit to explore, buy cards, mine, and earn DP. Everything is simulated — no real money at risk.',
+      'info'
+    );
+  } else {
+    // Live mode welcome notification (in-app)
+    const welcomed = localStorage.getItem('pandacard_live_welcome_sent');
+    if (!welcomed) {
+      getSupabase().from('notifications').insert({
+        user_id: APP.user.id,
+        title: 'Welcome to Panda Card!',
+        body: 'Your account is ready. Complete your profile and start trading.',
+        type: 'info',
+        read: false
+      }).then(() => {
+        localStorage.setItem('pandacard_live_welcome_sent', 'true');
+        loadNotifications();
+        updateNotificationBadge();
+      });
+    }
+  }
 }
 
 // ============================================================
@@ -2322,8 +2343,21 @@ function sendWelcomeNotification() {
 // ============================================================
 function updateBalanceUI() {
   const b = getBalances();
-  const nm = APP.user?.displayName || 'User';
-  const un = isDemo() && Demo.account() ? Demo.account().username : 'user';
+  
+  let nm = 'User';
+  let un = 'user';
+
+  if (isDemo()) {
+    const acc = Demo.account();
+    if (acc) {
+      nm = acc.fullName || 'User';
+      un = acc.username || 'user';
+    }
+  } else if (APP.profile) {
+    nm = APP.profile.full_name || 'User';
+    un = APP.profile.username || 'user';
+  }
+
   const nEl = document.getElementById('sidebarName');
   if (nEl) nEl.textContent = nm;
   const uEl = document.getElementById('sidebarUsername');
@@ -2339,11 +2373,10 @@ function updateBalanceUI() {
 // LIVE PROFILE
 // ============================================================
 async function refreshLiveProfile() {
-  if (!isLive() || !APP.user) return null;
+  if (isDemo() || !APP.user) return null;
   const sb = getSupabase();
   if (!sb) return null;
   
-  // Added marketplace_quantity and trade_quantity to the select
   const { data, error } = await sb.from('users').select('*, inventory(card_id, quantity, marketplace_quantity, trade_quantity)').eq('id', APP.user.id).single();
   
   if (data) {
@@ -2352,7 +2385,6 @@ async function refreshLiveProfile() {
       data.inventory.forEach(i => {
         if (i.quantity > 0) {
           formattedInv[i.card_id] = i.quantity;
-          // Optional: store this in a separate global object if you want to show it in the UI
         }
       });
     }
@@ -2395,22 +2427,18 @@ async function boot() {
 
   APP.mode = getMode();
 
-  // PWA INSTALL LISTENER
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     
-    // Show the button if not installed
     if (!isPWAInstalled()) {
       const headerBtn = document.getElementById('pwaInstallBtn');
       if (headerBtn) headerBtn.style.display = 'block';
       
-      // Check 12-hour cooldown before auto-prompting
       const lastDismissed = localStorage.getItem('pwa_prompt_dismissed');
       const now = Date.now();
       
       if (!lastDismissed || (now - parseInt(lastDismissed)) > INSTALL_COOLDOWN_MS) {
-        // Wait 2 seconds so it doesn't overlap with page load animations
         setTimeout(() => {
           if (!isPWAInstalled()) installPWA();
         }, 2000);
@@ -2420,11 +2448,10 @@ async function boot() {
 
   window.addEventListener('appinstalled', (evt) => {
     hideInstallUI();
-    localStorage.removeItem('pwa_prompt_dismissed'); // Clear cooldown
+    localStorage.removeItem('pwa_prompt_dismissed');
     showToast('App installed successfully!', 'success');
   });
 
-  // Hide install UI if already installed
   if (isPWAInstalled()) {
     hideInstallUI();
   }
@@ -2461,6 +2488,7 @@ async function boot() {
         username: profile.username
       };
     }
+    sendWelcomeNotification();
   }
 
   await loadCards();
