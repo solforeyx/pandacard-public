@@ -5,6 +5,17 @@
 // 🔴 REPLACE THIS WITH YOUR ACTUAL VAPID PUBLIC KEY
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
 
+// ============================================================
+// 🚨 REGISTER SERVICE WORKER IMMEDIATELY (Fixes PWABuilder error)
+// ============================================================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(reg => console.log('SW registered successfully:', reg.scope))
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+
 // PWA INSTALL PROMPT VARIABLES
 let deferredPrompt = null;
 const INSTALL_COOLDOWN_MS = 5 * 60 * 60 * 1000; // 5 hours
@@ -176,7 +187,7 @@ function installPWA() {
       deferredPrompt = null;
     });
   } else {
-    // If the native prompt isn't ready (or unsupported, like on iOS), show the instruction modal
+    // Fallback ONLY if Chrome hasn't fired the native event yet
     document.getElementById('installModal').classList.add('open');
   }
 }
@@ -2436,15 +2447,6 @@ async function boot() {
   const user = await getCurrentUser();
   if (!user) { window.location.href = 'auth.html'; return; }
   APP.user = user;
-
-  // REGISTER SERVICE WORKER FOR PUSH
-  if ('serviceWorker' in navigator) {
-    try {
-      await navigator.serviceWorker.register('/service-worker.js');
-    } catch (e) {
-      console.warn('SW registration failed', e);
-    }
-  }
 
   if (isDemo()) {
     const a = Demo.account();
