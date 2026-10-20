@@ -134,12 +134,6 @@ function setCachedRates(rates) {
   } catch (e) {}
 }
 
-/**
- * Loads exchange rates from TWO independent free providers and averages them.
- * - open.er-api.com (primary, free, no key)
- * - exchangerate.host (backup, free, no key)
- * If one fails, uses the other. If both fail, uses last cache. If no cache, uses NGN=1.
- */
 async function loadExchangeRates() {
   const cached = getCachedRates();
   if (cached && cached.USD) return cached;
@@ -173,17 +167,6 @@ async function loadExchangeRates() {
     return valid[0];
   }
 
-  // Cross-check: if both sources disagree by > 10% on USD, average anyway but log warning
-  const usdA = valid[0].USD || 0;
-  const usdB = valid[1].USD || 0;
-  if (usdA > 0 && usdB > 0) {
-    const diff = Math.abs(usdA - usdB) / Math.max(usdA, usdB);
-    if (diff > 0.10) {
-      console.warn('Rate discrepancy:', { usdA, usdB, diff });
-    }
-  }
-
-  // Merge by averaging
   const merged = { NGN: 1 };
   const keys = new Set();
   valid.forEach(v => Object.keys(v).forEach(k => keys.add(k)));
@@ -222,12 +205,6 @@ function convertToNGN(userPrice, userCurrency, rates) {
   return Math.round(userPrice / rate);
 }
 
-/**
- * Gets the current user's currency. Checks:
- * 1. window.currentUserProfile (set by app.js on boot)
- * 2. Demo session account
- * 3. Default NGN
- */
 function getUserCurrency() {
   if (window.currentUserProfile && window.currentUserProfile.currency) {
     return window.currentUserProfile.currency;
@@ -239,10 +216,20 @@ function getUserCurrency() {
   return 'NGN';
 }
 
+// 🚨 FIXED: Cleanly handles 0, null, and undefined values
 function formatPrice(ngnAmount, currency) {
   const c = currency || getUserCurrency();
   const symbol = getCurrencySymbol(c);
-  const converted = convertPrice(ngnAmount, c);
+  
+  // Force any null, undefined, or invalid numbers to 0
+  let amount = Number(ngnAmount);
+  if (isNaN(amount) || amount === null || amount === undefined) amount = 0;
+  
+  // If the balance is exactly 0, return just "₦0" instead of "₦0.00000000"
+  if (amount === 0) return symbol + '0';
+
+  const converted = convertPrice(amount, c);
+  
   if (typeof converted !== 'number' || isNaN(converted)) return symbol + '0';
   const abs = Math.abs(converted);
   if (abs < 0.01) return symbol + converted.toFixed(8);
@@ -291,18 +278,10 @@ async function translateText(text, targetLang) {
   return text;
 }
 
-/**
- * Translates the page content to targetLang.
- * Walks all visible text nodes inside .app-container and translates via MyMemory.
- * Runs in background, shows loading spinner during translation.
- */
 async function translatePageContent(targetLang) {
   if (!targetLang || targetLang === 'en') return;
-
-  // Set lang attribute so Chrome/Google native translate kicks in as fallback
   document.documentElement.setAttribute('lang', targetLang);
 
-  // Small app — safe to translate main sections directly
   const selectors = [
     '.section-header h2',
     '.menu-item',
@@ -316,7 +295,6 @@ async function translatePageContent(targetLang) {
     '.faq-item .a'
   ];
 
-  // Only translate elements that have text and aren't already translated
   const elements = document.querySelectorAll(selectors.join(','));
   for (const el of elements) {
     const original = el.getAttribute('data-original-text') || el.textContent.trim();
@@ -582,39 +560,6 @@ function toggleDarkMode() {
   const toggle = document.getElementById('settingsDarkToggle');
   if (toggle) toggle.classList.toggle('active', isDark);
   showToast(isDark ? 'Dark mode on' : 'Light mode on', 'success');
-}
-
-// ============================================================
-// PWA INSTALL PROMPT
-// ============================================================
-let _deferredInstallPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  _deferredInstallPrompt = e;
-  setTimeout(() => {
-    if (_deferredInstallPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
-      showInstallBanner();
-    }
-  }, 10000);
-});
-function showInstallBanner() {
-  if (document.getElementById('installBanner')) return;
-  const banner = document.createElement('div');
-  banner.id = 'installBanner';
-  banner.className = 'banner-alert info';
-  banner.innerHTML = '<span class="banner-text">Install Panda Card for faster access</span><button class="banner-dismiss" aria-label="dismiss">&times;</button>';
-  banner.querySelector('.banner-dismiss').onclick = () => banner.remove();
-  banner.onclick = async (e) => {
-    if (e.target.classList.contains('banner-dismiss')) return;
-    if (_deferredInstallPrompt) {
-      _deferredInstallPrompt.prompt();
-      await _deferredInstallPrompt.userChoice;
-      _deferredInstallPrompt = null;
-      banner.remove();
-    }
-  };
-  const content = document.querySelector('.content-area') || document.querySelector('.app-container');
-  if (content) content.prepend(banner);
 }
 
 // ============================================================
