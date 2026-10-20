@@ -2,7 +2,7 @@
 // PANDA CARD — SERVICE WORKER
 // ============================================
 
-const CACHE_VERSION = 'pandacard-v1.0.6'; // Bumped to force update
+const CACHE_VERSION = 'pandacard-v1.0.7'; // Bumped version
 const STATIC_ASSETS = [
   '/',
   '/auth.html',
@@ -33,8 +33,6 @@ const BYPASS_HOSTS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then((cache) => {
-      // BULLETPROOF INSTALL: Loop through files one by one.
-      // If one file is missing (404), it just skips it and continues.
       return Promise.all(
         STATIC_ASSETS.map((url) => {
           return cache.add(url).catch((err) => {
