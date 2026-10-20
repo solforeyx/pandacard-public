@@ -75,6 +75,9 @@
     <div class="brand">Panda<span>Card</span></div>
   </div>
   <div class="right">
+    <!-- PWA INSTALL BUTTON (Hidden by default until prompt is ready) -->
+    <button id="pwaInstallBtn" style="display:none; background:#FFD700; color:#1A1A2E; border:none; padding:6px 12px; border-radius:20px; font-weight:800; font-size:11px; cursor:pointer; margin-right:8px; font-family:'Poppins', sans-serif; box-shadow:0 2px 8px rgba(255,215,0,0.4);" onclick="installPWA()">Install App</button>
+    
     <span class="badge-container" onclick="navigateTo('notifications')">
       <span class="material-icons">notifications</span>
       <span class="badge-count" id="notificationBadge">0</span>
@@ -350,6 +353,15 @@
   <div class="app-container">
     <div class="content-area">
       <div class="section-header" style="margin-top:12px;"><h2>Settings</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
+      
+      <!-- PWA INSTALL ROW -->
+      <div class="section" id="settingsInstallRow" style="display:none;">
+        <div class="settings-item" onclick="installPWA()">
+          <div class="left"><span class="material-icons" style="color:#FFD700;">get_app</span><span class="label" style="color:#FFD700; font-weight:700;">Install Panda App</span></div>
+          <div class="right"><span class="material-icons" style="color:#FFD700;">chevron_right</span></div>
+        </div>
+      </div>
+
       <div class="section">
         <div class="section-title"><span class="material-icons">science</span> Mode</div>
         <div class="mode-switch">
