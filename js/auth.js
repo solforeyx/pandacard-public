@@ -245,9 +245,11 @@ async function login(email, password) {
 async function logout() {
   if (isDemo()) {
     demoLogout();
+    window.location.href = 'auth.html'; // FIXED: Forces redirect to login page
     return { success: true };
   }
   await liveLogout();
+  window.location.href = 'auth.html'; // FIXED: Forces redirect to login page
   return { success: true };
 }
 
