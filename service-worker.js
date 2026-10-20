@@ -2,7 +2,7 @@
 // PANDA CARD — SERVICE WORKER
 // ============================================
 
-const CACHE_VERSION = 'pandacard-v1.0.3';
+const CACHE_VERSION = 'pandacard-v1.0.6'; // Bumped to force update
 const STATIC_ASSETS = [
   '/',
   '/auth.html',
@@ -19,7 +19,6 @@ const STATIC_ASSETS = [
   '/js/bamboo.js'
 ];
 
-// Skip caching for these hosts (always live)
 const BYPASS_HOSTS = [
   'supabase.co',
   'paystack.co',
@@ -33,13 +32,17 @@ const BYPASS_HOSTS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch((error) => {
-        console.error('🚨 Panda Card service worker installation failed:', error);
-        throw error; // This will force the error to show
-      })
+    caches.open(CACHE_VERSION).then((cache) => {
+      // BULLETPROOF INSTALL: Loop through files one by one.
+      // If one file is missing (404), it just skips it and continues.
+      return Promise.all(
+        STATIC_ASSETS.map((url) => {
+          return cache.add(url).catch((err) => {
+            console.warn('⚠️ Failed to cache:', url);
+          });
+        })
+      );
+    }).then(() => self.skipWaiting())
   );
 });
 
