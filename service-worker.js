@@ -2,7 +2,7 @@
 // PANDA CARD — SERVICE WORKER
 // ============================================
 
-const CACHE_VERSION = 'pandacard-v1.0.1';
+const CACHE_VERSION = 'pandacard-v1.0.3';
 const STATIC_ASSETS = [
   '/',
   '/auth.html',
@@ -32,10 +32,14 @@ const BYPASS_HOSTS = [
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(STATIC_ASSETS).catch(() => {}))
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting())
+      .catch((error) => {
+        console.error('🚨 Panda Card service worker installation failed:', error);
+        throw error; // This will force the error to show
+      })
   );
 });
 
@@ -98,10 +102,10 @@ self.addEventListener('push', function(event) {
       body: data.body || 'You have a new update.',
       icon: 'https://i.imgur.com/9aLmHyS.png',
       badge: 'https://i.imgur.com/9aLmHyS.png',
-      vibrate: [200, 100, 200, 100, 200], // WhatsApp-style double buzz
+      vibrate: [200, 100, 200, 100, 200],
       data: { url: data.url || '/app.html' },
       actions: [{ action: 'open', title: 'Open App' }],
-      tag: data.tag || 'pandacard-notification', // Replaces older notifications of same type
+      tag: data.tag || 'pandacard-notification',
       renotify: true
     };
 
@@ -118,14 +122,12 @@ self.addEventListener('notificationclick', function(event) {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
-      // Check if app is already open in a tab
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if (client.url === urlToOpen && 'focus' in client) {
           return client.focus();
         }
       }
-      // If not open, open a new window
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }
