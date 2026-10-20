@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.solforeyx.pandacard.twa",
+        "sha256_cert_fingerprints": ["B1:07:B0:BC:00:37:63:D2:4F:84:11:45:D9:6D:2D:F5:61:6A:B5:CD:8C:37:28:6F:24:DE:18:C7:41:2B:30:3E"]
+      }
+    }]
