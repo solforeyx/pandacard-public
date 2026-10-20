@@ -5,6 +5,9 @@
 // 🔴 REPLACE THIS WITH YOUR ACTUAL VAPID PUBLIC KEY
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
 
+// PWA INSTALL PROMPT
+let deferredPrompt = null;
+
 const APP = {
   user: null,
   profile: null,
@@ -147,6 +150,33 @@ function toggleSidebar() {
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+// ============================================================
+// PWA INSTALL LOGIC
+// ============================================================
+function installPWA() {
+  if (!deferredPrompt) {
+    showToast('Install prompt not available yet. Please try again later.', 'info');
+    return;
+  }
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then((choiceResult) => {
+    if (choiceResult.outcome === 'accepted') {
+      console.log('User accepted the A2HS prompt');
+      hideInstallUI();
+    } else {
+      console.log('User dismissed the A2HS prompt');
+    }
+    deferredPrompt = null;
+  });
+}
+
+function hideInstallUI() {
+  const headerBtn = document.getElementById('pwaInstallBtn');
+  if (headerBtn) headerBtn.style.display = 'none';
+  const settingsRow = document.getElementById('settingsInstallRow');
+  if (settingsRow) settingsRow.style.display = 'none';
 }
 
 // ============================================================
@@ -315,19 +345,28 @@ function renderChecklist() {
   if (!el) return;
   if (!isDemo()) { el.innerHTML = ''; return; }
   const s = Demo.state();
-  if (!s?.checklist) { el.innerHTML = ''; return; }
-  const items = s.checklist;
-  if (items.reward && items.deposit && items.learn && items.announcement && items.buy) {
+  if (!s) { el.innerHTML = ''; return; }
+  
+  const items = s.checklist || {};
+  const pinDone = items.pin || !!s.pin;
+  const rewardDone = items.reward || false;
+  const depositDone = items.deposit || false;
+  const learnDone = items.learn || false;
+  const annDone = items.announcement || false;
+  const buyDone = items.buy || false;
+
+  if (rewardDone && depositDone && learnDone && annDone && buyDone && pinDone) {
     el.innerHTML = '';
     return;
   }
 
   const rows = [
-    { key: 'reward', label: 'Claim your daily reward', action: "navigateTo('dailyreward')" },
-    { key: 'deposit', label: 'Make your first deposit', action: "navigateTo('wallet')" },
-    { key: 'learn', label: 'Learn how the app works', action: "navigateTo('live')" },
-    { key: 'announcement', label: 'Check latest announcements', action: "navigateTo('announcements')" },
-    { key: 'buy', label: 'Buy your first card', action: "navigateTo('trade')" }
+    { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone },
+    { key: 'reward', label: 'Claim your daily reward', action: "navigateTo('dailyreward')", done: rewardDone },
+    { key: 'deposit', label: 'Make your first deposit', action: "navigateTo('wallet')", done: depositDone },
+    { key: 'learn', label: 'Learn how the app works', action: "navigateTo('live')", done: learnDone },
+    { key: 'announcement', label: 'Check latest announcements', action: "navigateTo('announcements')", done: annDone },
+    { key: 'buy', label: 'Buy your first card', action: "navigateTo('trade')", done: buyDone }
   ];
 
   el.innerHTML = `
@@ -335,7 +374,7 @@ function renderChecklist() {
       <div class="checklist-title"><span class="material-icons">checklist</span> Getting Started</div>
       <div class="checklist-sub">Complete these to unlock the full experience</div>
       ${rows.map(r => `
-        <div class="checklist-item ${items[r.key] ? 'done' : ''}" onclick="${r.action}">
+        <div class="checklist-item ${r.done ? 'done' : ''}" onclick="${r.action}">
           <span class="check-circle"><span class="material-icons">check</span></span>
           <span class="check-label">${escapeHtml(r.label)}</span>
         </div>
@@ -1762,9 +1801,14 @@ async function savePin() {
   if (newP !== conf) { showToast('PINs do not match', 'error'); return; }
   
   if (isDemo()) {
-    Demo.update(st => { st.pin = newP; });
+    Demo.update(st => { 
+      st.pin = newP; 
+      if (!st.checklist) st.checklist = {};
+      st.checklist.pin = true; // Mark checklist as done
+    });
     showToast('PIN saved', 'success');
     closePinModal();
+    renderChecklist(); // Refresh dashboard checklist
   } else {
     showLoading('Saving PIN...');
     try {
@@ -2330,6 +2374,25 @@ async function boot() {
 
   APP.mode = getMode();
 
+  // PWA INSTALL LISTENER
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent the mini-infobar from appearing on mobile
+    e.preventDefault();
+    // Stash the event so it can be triggered later.
+    deferredPrompt = e;
+    
+    // Update UI notify the user they can install the PWA
+    const headerBtn = document.getElementById('pwaInstallBtn');
+    if (headerBtn) headerBtn.style.display = 'block';
+    const settingsRow = document.getElementById('settingsInstallRow');
+    if (settingsRow) settingsRow.style.display = 'block';
+  });
+
+  window.addEventListener('appinstalled', (evt) => {
+    hideInstallUI();
+    showToast('App installed successfully!', 'success');
+  });
+
   try {
     await loadExchangeRates();
     APP.ratesLoaded = true;
@@ -2452,3 +2515,4 @@ window.buyCoins = buyCoins;
 window.dismissWelcome = dismissWelcome;
 window.logout = logout;
 window.subscribeUserToPush = subscribeUserToPush;
+window.installPWA = installPWA;
