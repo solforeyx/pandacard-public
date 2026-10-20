@@ -264,15 +264,19 @@ async function subscribeUserToPush() {
 
     const sb = getSupabase();
     if (sb && APP.user) {
-      await sb.from('push_subscriptions').upsert({
+      const { error } = await sb.from('push_subscriptions').upsert({
         user_id: APP.user.id,
         subscription: subscription.toJSON()
       }, { onConflict: 'user_id' });
+      
+      // 🚨 FIXED: This will now show a red error if the database rejects it
+      if (error) throw error; 
+      
       showToast('Push notifications enabled!', 'success');
     }
   } catch (err) {
     console.error('Push subscription failed:', err);
-    showToast('Failed to enable push notifications.', 'error');
+    showToast('Failed to enable push notifications: ' + err.message, 'error');
   }
 }
 
