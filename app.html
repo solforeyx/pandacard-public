@@ -75,8 +75,8 @@
     <div class="brand">Panda<span>Card</span></div>
   </div>
   <div class="right">
-    <!-- PWA INSTALL BUTTON (Visible by default, hidden via JS if already installed) -->
-    <button id="pwaInstallBtn" style="background:#FFD700; color:#1A1A2E; border:none; padding:6px 12px; border-radius:20px; font-weight:800; font-size:11px; cursor:pointer; margin-right:8px; font-family:'Poppins', sans-serif; box-shadow:0 2px 8px rgba(255,215,0,0.4);" onclick="installPWA()">Install App</button>
+    <!-- PWA INSTALL BUTTON (Hidden by default, JS will show it if not installed) -->
+    <button id="pwaInstallBtn" style="display:none; background:#FFD700; color:#1A1A2E; border:none; padding:6px 12px; border-radius:20px; font-weight:800; font-size:11px; cursor:pointer; margin-right:8px; font-family:'Poppins', sans-serif; box-shadow:0 2px 8px rgba(255,215,0,0.4);" onclick="triggerAppDownload()">Get App</button>
     
     <span class="badge-container" onclick="navigateTo('notifications')">
       <span class="material-icons">notifications</span>
@@ -354,10 +354,10 @@
     <div class="content-area">
       <div class="section-header" style="margin-top:12px;"><h2>Settings</h2><span class="see-all" onclick="navigateTo('dashboard')">Back</span></div>
       
-      <!-- PWA INSTALL ROW -->
-      <div class="section" id="settingsInstallRow">
-        <div class="settings-item" onclick="installPWA()">
-          <div class="left"><span class="material-icons" style="color:#FFD700;">get_app</span><span class="label" style="color:#FFD700; font-weight:700;">Install Panda App</span></div>
+      <!-- PWA INSTALL ROW (Hidden by default, JS will show it if not installed) -->
+      <div class="section" id="settingsInstallRow" style="display:none;">
+        <div class="settings-item" onclick="triggerAppDownload()">
+          <div class="left"><span class="material-icons" style="color:#FFD700;">get_app</span><span class="label" style="color:#FFD700; font-weight:700;">Download Panda App</span></div>
           <div class="right"><span class="material-icons" style="color:#FFD700;">chevron_right</span></div>
         </div>
       </div>
@@ -705,16 +705,17 @@
   </div>
 </div>
 
-<!-- CUSTOM PWA INSTALL INSTRUCTION MODAL (Fallback) -->
-<div class="modal-overlay" id="installModal" onclick="if(event.target===this)closeInstallModal()">
+<!-- DOWNLOAD APP MODAL (12-Hour Prompt) -->
+<div class="modal-overlay" id="downloadAppModal" onclick="if(event.target===this)closeDownloadAppModal()">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
-    <button class="modal-close" onclick="closeInstallModal()"><span class="material-icons">close</span></button>
+    <button class="modal-close" onclick="closeDownloadAppModal()"><span class="material-icons">close</span></button>
     <div style="text-align:center; padding-bottom: 20px;">
       <span class="material-icons" style="font-size:48px;color:#FFD700;">get_app</span>
-      <h3 style="font-size:20px;font-weight:800;margin-top:8px;">Install Panda Card</h3>
-      <p style="font-size:14px;color:#666;margin-top:8px;line-height:1.6;">To install the app on your phone, tap the <b>Menu button</b> (the three dots ⋮ or the share icon) in your browser and select <b>"Add to Home Screen"</b> or <b>"Install App"</b>.</p>
-      <button class="btn-primary" style="margin-top:20px;" onclick="closeInstallModal()">Got it</button>
+      <h3 style="font-size:20px;font-weight:800;margin-top:8px;">Get the Panda Card App</h3>
+      <p style="font-size:14px;color:#666;margin-top:8px;line-height:1.6;">Install the app on your phone for a faster, full-screen experience.</p>
+      <button class="btn-primary" style="margin-top:20px;" onclick="triggerAppDownload()">Download App Now</button>
+      <button class="btn-action" style="margin-top:12px; background:#eee; color:#333;" onclick="closeDownloadAppModal()">Maybe Later</button>
     </div>
   </div>
 </div>
@@ -730,10 +731,10 @@
 <script src="https://checkout.flutterwave.com/v3.js"></script>
 
 <!-- App Scripts (Forced Cache Refresh) -->
-<script src="js/config.js?v=6"></script>
-<script src="js/utils.js?v=6"></script>
-<script src="js/auth.js?v=6"></script>
-<script src="js/app.js?v=6"></script>
+<script src="js/config.js?v=7"></script>
+<script src="js/utils.js?v=7"></script>
+<script src="js/auth.js?v=7"></script>
+<script src="js/app.js?v=7"></script>
 
 <!-- ✅ DIRECT SERVICE WORKER REGISTRATION (BYPASSES LOGIN CHECK) -->
 <script>
@@ -748,6 +749,44 @@
         });
     });
   }
+
+  // Function to trigger the APK download
+  function triggerAppDownload() {
+    window.location.href = '/PandaCard.apk';
+    closeDownloadAppModal();
+  }
+
+  // Function to close the download prompt
+  function closeDownloadAppModal() {
+    document.getElementById('downloadAppModal').classList.remove('open');
+    localStorage.setItem('app_prompt_dismissed', Date.now());
+  }
+
+  // Check if installed and handle the 12-hour popup
+  function checkAppInstallation() {
+    const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    
+    if (!isInstalled) {
+      // Show buttons
+      document.getElementById('pwaInstallBtn').style.display = 'block';
+      document.getElementById('settingsInstallRow').style.display = 'block';
+
+      // Check 12-hour cooldown (12 * 60 * 60 * 1000 = 43200000)
+      const lastDismissed = localStorage.getItem('app_prompt_dismissed');
+      const now = Date.now();
+      
+      if (!lastDismissed || (now - parseInt(lastDismissed)) > 43200000) {
+        setTimeout(() => {
+          if (!window.matchMedia('(display-mode: standalone)').matches) {
+            document.getElementById('downloadAppModal').classList.add('open');
+          }
+        }, 3000); // Wait 3 seconds before showing the prompt
+      }
+    }
+  }
+
+  // Run the check on load
+  document.addEventListener('DOMContentLoaded', checkAppInstallation);
 </script>
 
 </body>
