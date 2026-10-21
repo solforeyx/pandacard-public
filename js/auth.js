@@ -26,7 +26,7 @@ function demoHashPassword(password) {
   return String(hash);
 }
 
-function demoCreateAccount(data) {
+async function demoCreateAccount(data) {
   const accounts = demoGetAccounts();
   if (accounts[data.email.toLowerCase()]) {
     return { error: 'An account with this email already exists' };
@@ -87,13 +87,13 @@ function demoCreateAccount(data) {
   demoSetAccounts(accounts);
   localStorage.setItem(STORAGE.DEMO_SESSION, account.email);
 
-  // Send to Brevo Demo List in background (List ID: 7)
+  // 🚨 FIXED: Added 'await' so the app waits for Brevo to finish before redirecting
   try {
     const sb = getSupabase();
     if (sb) {
-      sb.functions.invoke('add-demo-lead', { 
+      await sb.functions.invoke('add-demo-lead', { 
         body: { email: account.email, name: account.fullName } 
-      }).catch((err) => console.log('Brevo Demo sync failed:', err));
+      });
     }
   } catch (e) {
     console.error('Failed to invoke Brevo function', e);
@@ -166,6 +166,13 @@ async function liveSignup(data) {
   if (authError) return { error: authError.message };
   if (!authData.user) return { error: 'Signup failed' };
 
+  // 🚨 FIXED: Prevent duplicate Brevo emails by checking if user already existed
+  // If identities array is empty, it means the user already had an account
+  const isNewUser = authData.user.identities && authData.user.identities.length > 0;
+  if (!isNewUser) {
+    return { error: 'This email is already registered. Please log in instead.' };
+  }
+
   // 🚨 UPSERT: Prevents duplicate key errors if a trigger exists
   const { error: profileError } = await sb.from('users').upsert({
     id: authData.user.id,
@@ -194,13 +201,14 @@ async function liveSignup(data) {
     return { error: profileError.message };
   }
 
-  // Trigger Brevo Live List (List ID: 8) for Automated Welcome Email
+  // 🚨 FIXED: Added 'await' so the app waits for Brevo to finish
   try {
-    sb.functions.invoke('welcome-email', { 
+    await sb.functions.invoke('welcome-email', { 
       body: { email: email, name: fullName } 
-    }).catch((err) => console.log('Brevo Live sync failed:', err));
+    });
   } catch (e) {
     console.error('Failed to invoke Brevo function', e);
+    // We don't return an error here. If Brevo fails, the user is still signed up.
   }
 
   return { user: authData.user };
