@@ -105,7 +105,14 @@ const CURRENCY_SYMBOLS = {
   CAD: 'CA$', AUD: 'A$', INR: '₹', CNY: '¥',
   JPY: '¥', KRW: '₩', BRL: 'R$', MXN: 'MX$',
   AED: 'د.إ', SAR: '﷼', TRY: '₺', RUB: '₽',
-  XAF: 'FCFA', XOF: 'CFA', MAD: 'DH', TND: 'DT', DZD: 'DA'
+  XAF: 'FCFA', XOF: 'CFA', MAD: 'DH', TND: 'DT', DZD: 'DA',
+  UGX: 'USh', TZS: 'TSh', RWF: 'FRw', ZMW: 'ZK', BWP: 'P',
+  MZN: 'MT', AOA: 'Kz', ETB: 'Br', SOS: 'Sh', SDG: 'ج.س.',
+  CDF: 'FC', XCD: '$', TTD: 'TT$', JMD: 'J$', BSD: '$',
+  BBD: '$', BZD: 'BZ$', GTQ: 'Q', HNL: 'L', NIO: 'C$',
+  CRC: '₡', PAB: 'B/.', DOP: 'RD$', HTG: 'G', ARS: '$',
+  CLP: '$', COP: '$', PEN: 'S/', UYU: '$U', PYG: '₲',
+  BOB: 'Bs.', VES: 'Bs.'
 };
 
 let _exchangeRates = null;
@@ -216,7 +223,7 @@ function getUserCurrency() {
   return 'NGN';
 }
 
-// 🚨 FIXED: Cleanly handles 0, null, and undefined values
+// Cleanly handles 0, null, and undefined values
 function formatPrice(ngnAmount, currency) {
   const c = currency || getUserCurrency();
   const symbol = getCurrencySymbol(c);
