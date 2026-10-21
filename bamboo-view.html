@@ -32,7 +32,7 @@
     .header .back .material-icons { font-size: 20px; }
     .header .title { font-size: 18px; font-weight: 800; }
     .header .title span { color: #FFD700; }
-    .header select { background: #1A1A3E; color: #FFD700; border: 1px solid #2A2A4E; border-radius: 8px; padding: 4px 8px; font-size: 11px; font-family: 'Poppins', sans-serif; cursor: pointer; }
+    .header select { background: #1A1A3E; color: #FFD700; border: 1px solid #2A2A4E; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-family: 'Poppins', sans-serif; cursor: pointer; outline: none; }
     .container { padding: 12px; max-width: 500px; margin: 0 auto; }
     .sentiment-card { background: linear-gradient(135deg, #1A1A3E, #12122A); border: 1px solid #1E1E3A; border-radius: 16px; padding: 20px; margin-bottom: 12px; text-align: center; color: #FFFFFF; }
     .sentiment-card .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
@@ -118,14 +118,8 @@
       <a href="app.html" class="back"><span class="material-icons">arrow_back</span> Back</a>
       <div class="title">Bamboo<span>View</span></div>
       <select id="bambooCurrency" onchange="changeBambooCurrency()">
+        <!-- Options will be populated by JavaScript -->
         <option value="NGN">NGN</option>
-        <option value="USD">USD</option>
-        <option value="EUR">EUR</option>
-        <option value="GBP">GBP</option>
-        <option value="GHS">GHS</option>
-        <option value="KES">KES</option>
-        <option value="ZAR">ZAR</option>
-        <option value="EGP">EGP</option>
       </select>
     </div>
 
