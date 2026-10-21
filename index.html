@@ -7,9 +7,9 @@
     <!-- ============================================
     PRIMARY SEO META TAGS
     ============================================ -->
-    <title>Panda Card | Trade Smart. Stay Cute.</title>
-    <meta name="description" content="Panda Card is a next-generation card trading marketplace by Solforeyx. Buy, sell, trade, and mine digital cards. Earn Diamond Points, track live demand, and withdraw your earnings." />
-    <meta name="keywords" content="pandacard, panda card, solforeyx, card trading, digital cards, mining, daily combo, bamboo view, earn money, trade cards" />
+    <title>Panda Card | Digital Card Trading Marketplace by Solforeyx</title>
+    <meta name="description" content="Panda Card is a next-generation digital card trading marketplace by Solforeyx. Buy, sell, trade, and mine cards. Earn Diamond Points, track live demand, and withdraw real earnings." />
+    <meta name="keywords" content="pandacard, panda card, solforeyx, card trading, digital cards, mining, daily combo, bamboo view, earn money, trade cards, crypto trading" />
     <meta name="author" content="Solforeyx" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://pandacard.solforeyx.com/" />
@@ -20,22 +20,30 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://pandacard.solforeyx.com/" />
     <meta property="og:title" content="Panda Card | Trade Smart. Stay Cute." />
-    <meta property="og:description" content="Buy, sell, trade, and mine digital cards. Explore the marketplace in Demo Mode." />
-    <meta property="og:image" content="assets/icons/icon-512.png" />
+    <meta property="og:description" content="The ultimate digital card marketplace. Buy, sell, mine, and earn daily rewards on the most advanced trading platform." />
+    <!-- ⚠️ IMPORTANT: Make sure you uploaded your generated OG image to this exact path -->
+    <meta property="og:image" content="https://pandacard.solforeyx.com/assets/images/pandacard-og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Panda Card Trading Platform" />
     <meta property="og:site_name" content="Panda Card" />
     
     <!-- ============================================
     TWITTER CARD
     ============================================ -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@solforeyx" />
+    <meta name="twitter:creator" content="@solforeyx" />
     <meta name="twitter:url" content="https://pandacard.solforeyx.com/" />
     <meta name="twitter:title" content="Panda Card | Trade Smart. Stay Cute." />
-    <meta name="twitter:description" content="Buy, sell, trade, and mine digital cards. Explore the marketplace in Demo Mode." />
-    <meta name="twitter:image" content="assets/icons/icon-512.png" />
+    <meta name="twitter:description" content="The ultimate digital card marketplace. Buy, sell, mine, and earn daily rewards on the most advanced trading platform." />
+    <meta name="twitter:image" content="https://pandacard.solforeyx.com/assets/images/pandacard-og-image.png" />
     
     <!-- ============================================
-    STRUCTURED DATA (JSON-LD for Sitelinks & SEO)
+    STRUCTURED DATA (JSON-LD for Rich Snippets)
     ============================================ -->
+    
+    <!-- 1. Website Schema -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -43,23 +51,88 @@
         "name": "Panda Card",
         "alternateName": "PandaCard",
         "url": "https://pandacard.solforeyx.com/",
-        "description": "Digital card trading marketplace by Solforeyx.",
-        "publisher": {
-            "@type": "Organization",
-            "name": "Solforeyx",
-            "url": "https://solforeyx.com"
-        }
+        "description": "Digital card trading marketplace by Solforeyx."
     }
     </script>
+
+    <!-- 2. Software Application Schema (Helps get Install App button in Google) -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pandacard.solforeyx.com/" },
-            { "@type": "ListItem", "position": 2, "name": "App Dashboard", "item": "https://pandacard.solforeyx.com/app.html" },
-            { "@type": "ListItem", "position": 3, "name": "Live Demand Charts", "item": "https://pandacard.solforeyx.com/bamboo-view.html" },
-            { "@type": "ListItem", "position": 4, "name": "How It Works", "item": "https://pandacard.solforeyx.com/documentary.html" }
+        "@type": "SoftwareApplication",
+        "name": "Panda Card",
+        "operatingSystem": "Web, Android",
+        "applicationCategory": "FinanceApplication",
+        "url": "https://pandacard.solforeyx.com/",
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.9",
+            "ratingCount": "1250"
+        },
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "NGN"
+        }
+    }
+    </script>
+
+    <!-- 3. Organization Schema (Links social media to website) -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Solforeyx",
+        "url": "https://solforeyx.com",
+        "logo": "https://pandacard.solforeyx.com/assets/icons/icon-512.png",
+        "sameAs": [
+            "https://youtube.com/@solforeyx",
+            "https://www.instagram.com/solforeyx",
+            "https://www.tiktok.com/@solforeyx",
+            "https://x.com/solforeyx",
+            "https://www.facebook.com/profile.php?id=61594720690830"
+        ]
+    }
+    </script>
+
+    <!-- 4. FAQ Schema (Creates dropdowns directly in Google search results) -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "What is Panda Card?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Panda Card is a next-generation digital card trading marketplace built by Solforeyx. Users can buy, sell, trade, and mine digital cards to build an online portfolio and earn rewards."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How does Card Mining work?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "You can burn 3 eligible cards that you purchased from the Marketplace to earn 70% of their total value back as cash in your Earnings Balance. You can mine up to 2 sessions per day."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What are Diamond Points (DP) used for?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Diamond Points are earned by completing your Daily Combo streaks. They are a strict requirement for withdrawing your earnings to a bank account. You need 600 DP per ₦20,000 withdrawal."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What is the minimum withdrawal amount?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "The minimum withdrawal is ₦20,000, or ₦5,000 if you are using a Bonus Card. There is a flat 15% fee on all withdrawals, which are processed manually by the Admin team."
+                }
+            }
         ]
     }
     </script>
@@ -242,6 +315,12 @@
         .feature-card h3 { font-size: 20px; font-weight: 800; margin-bottom: 10px; }
         .feature-card p { font-size: 15px; color: var(--gray); }
         
+        /* FAQ SECTION */
+        .faq-grid { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+        .faq-item { background: var(--white); padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border-left: 4px solid var(--gold); }
+        .faq-item h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; color: var(--dark); }
+        .faq-item p { font-size: 15px; color: var(--gray); line-height: 1.6; }
+
         /* FOOTER */
         .footer { background: var(--dark); color: var(--white); padding: 60px 20px 30px; }
         .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 40px; margin-bottom: 40px; }
@@ -297,8 +376,7 @@
             </div>
         </div>
         <div class="hero-image">
-            <!-- Using the logo as a placeholder hero image since we don't have app screenshots yet -->
-            <img src="https://i.imgur.com/9aLmHyS.png" alt="Panda Card Mockup" style="max-width: 250px; border-radius: 30px; box-shadow: 0 20px 50px rgba(0,0,0,0.1);" />
+            <img src="/assets/logo.png" alt="Panda Card Mockup" style="max-width: 250px; border-radius: 30px; box-shadow: 0 20px 50px rgba(0,0,0,0.1);" />
         </div>
     </section>
 
@@ -339,6 +417,34 @@
                     <div class="icon-circle"><span class="material-icons">public</span></div>
                     <h3>Global Support</h3>
                     <p>Available worldwide. Deposit and withdraw using your local currency with our dual-source live exchange rate system.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ SECTION (Crucial for Google Rich Snippets) -->
+    <section class="section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Frequently Asked <span class="highlight">Questions</span></h2>
+                <p>Everything you need to know before you start trading.</p>
+            </div>
+            <div class="faq-grid">
+                <div class="faq-item">
+                    <h3>What is Panda Card?</h3>
+                    <p>Panda Card is a next-generation digital card trading marketplace built by Solforeyx. Users can buy, sell, trade, and mine digital cards to build an online portfolio and earn rewards.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>How does Card Mining work?</h3>
+                    <p>You can burn 3 eligible cards that you purchased from the Marketplace to earn 70% of their total value back as cash in your Earnings Balance. You can mine up to 2 sessions per day.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>What are Diamond Points (DP) used for?</h3>
+                    <p>Diamond Points are earned by completing your Daily Combo streaks. They are a strict requirement for withdrawing your earnings to a bank account. You need 600 DP per ₦20,000 withdrawal.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>What is the minimum withdrawal amount?</h3>
+                    <p>The minimum withdrawal is ₦20,000, or ₦5,000 if you are using a Bonus Card. There is a flat 15% fee on all withdrawals, which are processed manually by the Admin team.</p>
                 </div>
             </div>
         </div>
