@@ -68,6 +68,9 @@ const Demo = {
     });
     if (APP.user) updateNotificationBadge();
     playNotificationSound();
+    
+    // 🚨 NEW: Trigger local browser notification in Demo Mode
+    triggerLocalDemoNotification(title, body);
   },
   log(tx) {
     this.update(s => {
@@ -77,6 +80,20 @@ const Demo = {
     });
   }
 };
+
+// ============================================================
+// LOCAL NOTIFICATION (For Demo Mode)
+// ============================================================
+function triggerLocalDemoNotification(title, body) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "granted") {
+    new Notification(title, {
+      body: body,
+      icon: 'https://i.imgur.com/9aLmHyS.png',
+      badge: '/assets/icons/notification-icon.png'
+    });
+  }
+}
 
 // ============================================================
 // GETTERS
@@ -152,6 +169,16 @@ function navigateTo(section) {
   if (section === 'announcements') loadAnnouncements();
   if (section === 'help') loadFAQ();
   if (section === 'dailyreward') loadDailyReward();
+  
+  // 🚨 FIXED: Mark checklist items as done when they visit the section
+  if (isDemo()) {
+    if (section === 'live') {
+      Demo.update(s => { if(s.checklist) s.checklist.learn = true; });
+    }
+    if (section === 'announcements') {
+      Demo.update(s => { if(s.checklist) s.checklist.announcement = true; });
+    }
+  }
 }
 
 function toggleSidebar() {
@@ -185,7 +212,6 @@ function installPWA() {
       deferredPrompt = null;
     });
   } else {
-    // Force direct APK download if Chrome prompt fails
     window.location.href = '/PandaCard.apk';
   }
 }
@@ -243,15 +269,36 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-async function subscribeUserToPush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    showToast('Push notifications are not supported on this device.', 'error');
+async function togglePushNotifications() {
+  const isGranted = Notification.permission === 'granted';
+  const pushToggle = document.getElementById('settingsPushToggle');
+
+  if (isGranted) {
+    // If already granted, we can't easily revoke it from JS. Tell them to use settings.
+    showToast('To disable notifications, go to your browser/app settings.', 'info');
     return;
   }
 
+  // Request permission
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
+  if (permission === 'granted') {
+    if (pushToggle) pushToggle.classList.add('active');
+    await subscribeUserToPush();
+    
+    // Mark checklist as done for demo
+    if (isDemo()) {
+      Demo.update(s => { if(s.checklist) s.checklist.push = true; });
+      renderChecklist();
+    }
+  } else {
     showToast('Notification permission denied.', 'error');
+    if (pushToggle) pushToggle.classList.remove('active');
+  }
+}
+
+async function subscribeUserToPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showToast('Push notifications are not supported on this device.', 'error');
     return;
   }
 
@@ -269,9 +316,7 @@ async function subscribeUserToPush() {
         subscription: subscription.toJSON()
       }, { onConflict: 'user_id' });
       
-      // 🚨 FIXED: This will now show a red error if the database rejects it
       if (error) throw error; 
-      
       showToast('Push notifications enabled!', 'success');
     }
   } catch (err) {
@@ -381,19 +426,21 @@ function renderChecklist() {
   }
   
   const installDone = isPWAInstalled();
+  const pushDone = (typeof Notification !== 'undefined' && Notification.permission === 'granted');
 
-  if (isDemo() && items.reward && items.deposit && items.learn && items.announcement && items.buy && pinDone && installDone) {
+  if (isDemo() && items.reward && items.deposit && items.learn && items.announcement && items.buy && pinDone && installDone && pushDone) {
     el.innerHTML = '';
     return;
   }
 
-  if (!isDemo() && pinDone && installDone) {
+  if (!isDemo() && pinDone && installDone && pushDone) {
     el.innerHTML = '';
     return;
   }
 
   const rows = [
     { key: 'install', label: 'Install the Panda App', action: "installPWA()", done: installDone },
+    { key: 'push', label: 'Enable Push Notifications', action: "navigateTo('settings')", done: pushDone },
     { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone }
   ];
 
@@ -1793,17 +1840,30 @@ function loadSettings() {
     langEl.textContent = languageName(saved);
   }
 
-  // INJECT PUSH NOTIFICATION BUTTON
+  // INJECT PUSH NOTIFICATION TOGGLE
   const settingsContainer = document.querySelector('#section-settings .content-area');
-  if (settingsContainer && !document.getElementById('pushToggleBtn')) {
+  if (settingsContainer && !document.getElementById('settingsPushToggle')) {
     const pushSection = document.createElement('div');
     pushSection.className = 'section';
     pushSection.innerHTML = `
       <div class="section-title"><span class="material-icons">notifications_active</span> Alerts</div>
       <p style="font-size:12px;color:#999;margin-bottom:12px;">Get notified when your cards sell or when demand is high.</p>
-      <button id="pushToggleBtn" class="btn-action" onclick="subscribeUserToPush()">Enable Push Notifications</button>
+      <div class="settings-item">
+        <div class="left"><span class="material-icons">notifications</span><span class="label">Push Notifications</span></div>
+        <div class="right">
+          <div class="toggle" id="settingsPushToggle" onclick="togglePushNotifications()">
+            <div class="thumb"></div>
+          </div>
+        </div>
+      </div>
     `;
     settingsContainer.appendChild(pushSection);
+
+    // Set initial toggle state
+    const pushToggle = document.getElementById('settingsPushToggle');
+    if (pushToggle && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      pushToggle.classList.add('active');
+    }
   }
 }
 
@@ -2167,6 +2227,9 @@ async function submitContact() {
 // DAILY REWARD
 // ============================================================
 async function loadDailyReward() {
+  // 🚨 FIXED: Dynamically update the Buy Coins buttons with current exchange rates
+  updateCoinPricesUI();
+
   if (isDemo()) {
     const s = Demo.state();
     const dr = s.dailyReward || { lastClaim: '', streak: 0, claimHistory: [] };
@@ -2201,6 +2264,22 @@ async function loadDailyReward() {
     document.getElementById('rewardTotal').textContent = '20';
     document.getElementById('rewardCalendar').innerHTML = '<div style="grid-column:1/-1;text-align:center;font-size:12px;color:#999;">Live history tracked in DB</div>';
   }
+}
+
+// 🚨 NEW: Function to convert hardcoded NGN button text to user currency
+function updateCoinPricesUI() {
+  const section = document.getElementById('coinPurchaseSection');
+  if (!section) return;
+  
+  const buttons = section.querySelectorAll('button');
+  const coins = [10, 50, 100, 500, 1000];
+  const ngn = [100, 500, 1000, 5000, 10000];
+  
+  buttons.forEach((btn, index) => {
+    if (index < coins.length) {
+      btn.innerHTML = `${coins[index]} PC<br/><span style="font-size:10px;">${formatPrice(ngn[index])}</span>`;
+    }
+  });
 }
 
 function renderRewardCalendar(claimHistory, createdAt, todayStr) {
@@ -2324,7 +2403,6 @@ function sendWelcomeNotification() {
       'info'
     );
   } else {
-    // Live mode welcome notification (in-app)
     const welcomed = localStorage.getItem('pandacard_live_welcome_sent');
     if (!welcomed) {
       getSupabase().from('notifications').insert({
@@ -2498,6 +2576,9 @@ async function boot() {
   await loadCards();
 
   updateBalanceUI();
+  
+  // 🚨 FIXED: Update Buy Coins UI immediately on boot
+  updateCoinPricesUI();
 
   const hash = window.location.hash.replace('#', '') || 'dashboard';
   navigateTo(hash);
@@ -2574,5 +2655,6 @@ window.buyCoins = buyCoins;
 window.dismissWelcome = dismissWelcome;
 window.logout = logout;
 window.subscribeUserToPush = subscribeUserToPush;
+window.togglePushNotifications = togglePushNotifications;
 window.installPWA = installPWA;
 window.closeInstallModal = closeInstallModal;
