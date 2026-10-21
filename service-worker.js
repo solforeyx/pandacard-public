@@ -43,10 +43,13 @@ self.addEventListener('push', function(event) {
 
     const options = {
       body: data.body || 'You have a new update.',
-      // ✅ FIXED: Using a white silhouette icon for Android's top bar
-      icon: 'https://cdn-icons-png.flaticon.com/512/3176/3176286.png', 
-      // ✅ FIXED: Using your Panda logo for the main badge
-      badge: 'https://i.imgur.com/9aLmHyS.png',
+      
+      // ✅ Large image on the right (Your Panda Logo)
+      icon: 'https://i.imgur.com/9aLmHyS.png', 
+      
+      // ✅ Small image on the left (The new white transparent icon you just generated)
+      badge: '/assets/icons/notification-icon.png', 
+      
       vibrate: [200, 100, 200, 100, 200],
       data: { url: data.url || '/app.html' },
       actions: [{ action: 'open', title: 'Open App' }],
