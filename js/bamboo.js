@@ -10,14 +10,91 @@ let bambooCurrency = 'NGN';
 let bambooRates = { NGN: 1 };
 let bambooDemandData = {};
 
+// 🚨 LIST OF GLOBAL CURRENCIES FOR THE DROPDOWN
+const BAMBOO_CURRENCIES = [
+  { code: 'NGN', name: 'NGN - Nigerian Naira' },
+  { code: 'USD', name: 'USD - US Dollar' },
+  { code: 'EUR', name: 'EUR - Euro' },
+  { code: 'GBP', name: 'GBP - British Pound' },
+  { code: 'CAD', name: 'CAD - Canadian Dollar' },
+  { code: 'AUD', name: 'AUD - Australian Dollar' },
+  { code: 'GHS', name: 'GHS - Ghanaian Cedi' },
+  { code: 'KES', name: 'KES - Kenyan Shilling' },
+  { code: 'ZAR', name: 'ZAR - South African Rand' },
+  { code: 'EGP', name: 'EGP - Egyptian Pound' },
+  { code: 'AED', name: 'AED - UAE Dirham' },
+  { code: 'SAR', name: 'SAR - Saudi Riyal' },
+  { code: 'INR', name: 'INR - Indian Rupee' },
+  { code: 'CNY', name: 'CNY - Chinese Yuan' },
+  { code: 'JPY', name: 'JPY - Japanese Yen' },
+  { code: 'BRL', name: 'BRL - Brazilian Real' },
+  { code: 'MXN', name: 'MXN - Mexican Peso' },
+  { code: 'RUB', name: 'RUB - Russian Ruble' },
+  { code: 'TRY', name: 'TRY - Turkish Lira' },
+  { code: 'XAF', name: 'XAF - Central African CFA' },
+  { code: 'XOF', name: 'XOF - West African CFA' },
+  { code: 'MAD', name: 'MAD - Moroccan Dirham' },
+  { code: 'TND', name: 'TND - Tunisian Dinar' },
+  { code: 'DZD', name: 'DZD - Algerian Dinar' },
+  { code: 'UGX', name: 'UGX - Ugandan Shilling' },
+  { code: 'TZS', name: 'TZS - Tanzanian Shilling' },
+  { code: 'RWF', name: 'RWF - Rwandan Franc' },
+  { code: 'ZMW', name: 'ZMW - Zambian Kwacha' },
+  { code: 'BWP', name: 'BWP - Botswana Pula' },
+  { code: 'MZN', name: 'MZN - Mozambican Metical' },
+  { code: 'AOA', name: 'AOA - Angolan Kwanza' },
+  { code: 'ETB', name: 'ETB - Ethiopian Birr' },
+  { code: 'SOS', name: 'SOS - Somali Shilling' },
+  { code: 'SDG', name: 'SDG - Sudanese Pound' },
+  { code: 'CDF', name: 'CDF - Congolese Franc' },
+  { code: 'XCD', name: 'XCD - East Caribbean Dollar' },
+  { code: 'TTD', name: 'TTD - Trinidad Dollar' },
+  { code: 'JMD', name: 'JMD - Jamaican Dollar' },
+  { code: 'BSD', name: 'BSD - Bahamian Dollar' },
+  { code: 'BBD', name: 'BBD - Barbadian Dollar' },
+  { code: 'BZD', name: 'BZD - Belize Dollar' },
+  { code: 'GTQ', name: 'GTQ - Guatemalan Quetzal' },
+  { code: 'HNL', name: 'HNL - Honduran Lempira' },
+  { code: 'NIO', name: 'NIO - Nicaraguan Cordoba' },
+  { code: 'CRC', name: 'CRC - Costa Rican Colon' },
+  { code: 'PAB', name: 'PAB - Panamanian Balboa' },
+  { code: 'DOP', name: 'DOP - Dominican Peso' },
+  { code: 'HTG', name: 'HTG - Haitian Gourde' },
+  { code: 'ARS', name: 'ARS - Argentine Peso' },
+  { code: 'CLP', name: 'CLP - Chilean Peso' },
+  { code: 'COP', name: 'COP - Colombian Peso' },
+  { code: 'PEN', name: 'PEN - Peruvian Sol' },
+  { code: 'UYU', name: 'UYU - Uruguayan Peso' },
+  { code: 'PYG', name: 'PYG - Paraguayan Guarani' },
+  { code: 'BOB', name: 'BOB - Bolivian Boliviano' },
+  { code: 'VES', name: 'VES - Venezuelan Bolivar' }
+];
+
 // ============================================================
 // INIT
 // ============================================================
 async function bambooInit() {
+  populateCurrencyDropdown();
   loadBambooCurrencyPref();
   bambooRates = await loadExchangeRates();
   await bambooLoadData();
   setInterval(bambooLoadData, 30000);
+}
+
+function populateCurrencyDropdown() {
+  const sel = document.getElementById('bambooCurrency');
+  if (!sel) return;
+  
+  // Clear existing options
+  sel.innerHTML = '';
+  
+  // Add all currencies
+  BAMBOO_CURRENCIES.forEach(cur => {
+    const opt = document.createElement('option');
+    opt.value = cur.code;
+    opt.textContent = cur.name;
+    sel.appendChild(opt);
+  });
 }
 
 function loadBambooCurrencyPref() {
@@ -32,8 +109,13 @@ function changeBambooCurrency() {
   if (!sel) return;
   bambooCurrency = sel.value;
   localStorage.setItem('bamboo_currency', bambooCurrency);
+  
+  // Update UI when currency changes
   if (bambooSelected) bambooRenderCard(bambooSelected);
   bambooRenderMovers();
+  
+  // Log for debugging
+  console.log(`Currency changed to: ${bambooCurrency} | Rate: ${bambooRates[bambooCurrency]}`);
 }
 
 // ============================================================
@@ -130,6 +212,7 @@ function bambooRenderCard(card) {
 
   document.getElementById('cardName').textContent = card.name || 'Card';
 
+  // 🚨 Format price dynamically using current currency
   const price = card.current_price || card.original_price || 0;
   document.getElementById('cardPrice').textContent = bambooFormatPrice(price);
 
@@ -142,10 +225,12 @@ function bambooRenderCard(card) {
   let status = card.status || 'neutral';
   if (card.is_vip) status = 'vip';
   statusEl.textContent = status.toUpperCase();
-  statusEl.className = 'card-status ' + status;
+  statusEl.className = 'status ' + status;
 
   const floor = card.original_price || 0;
   const ceiling = floor * 10;
+  
+  // 🚨 Format stats dynamically
   document.getElementById('cardHigh').textContent = bambooFormatPrice(ceiling);
   document.getElementById('cardLow').textContent = bambooFormatPrice(floor);
 
@@ -294,6 +379,8 @@ function bambooRenderMovers() {
   el.innerHTML = sorted.map(card => {
     const ch = card.price_change_pct || 0;
     const up = ch >= 0;
+    // Note: Movers use percentages, so they don't need currency conversion. 
+    // But if you want to show the price alongside it, you would use bambooFormatPrice(card.current_price)
     return `<div class="bar-row">
       <span class="bar-label">${escapeHtml(card.name).substring(0, 8)}</span>
       <div class="bar-track">
@@ -308,9 +395,14 @@ function bambooRenderMovers() {
 // FORMAT
 // ============================================================
 function bambooFormatPrice(ngn) {
+  // Get the current exchange rate for the selected currency
   const rate = bambooRates[bambooCurrency] || 1;
   const converted = ngn * rate;
+  
+  // Get the symbol (e.g., ₦, $, €)
   const symbol = getCurrencySymbol(bambooCurrency);
+  
+  // Format the number nicely based on its size
   if (bambooCurrency === 'NGN') return '₦' + Math.round(ngn).toLocaleString();
   if (converted < 0.01) return symbol + converted.toFixed(8);
   if (converted < 1) return symbol + converted.toFixed(6);
