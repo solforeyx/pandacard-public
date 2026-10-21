@@ -84,15 +84,20 @@ const Demo = {
 // ============================================================
 // LOCAL NOTIFICATION (For Demo Mode)
 // ============================================================
-function triggerLocalDemoNotification(title, body) {
-  if (!("Notification" in window)) return;
+async function triggerLocalDemoNotification(title, body) {
+  if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
+  
   if (Notification.permission === "granted") {
     try {
-      new Notification(title, {
+      // 🚨 FIXED: Using Service Worker instead of 'new Notification' to force Android heads-up popup
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, {
         body: body,
         icon: 'https://i.imgur.com/9aLmHyS.png', // Right side large image
         badge: '/assets/icons/notification-icon.png', // Left side small flat icon
-        vibrate: [200, 100, 200, 100, 200]
+        vibrate: [200, 100, 200, 100, 200],
+        tag: 'pandacard-demo',
+        renotify: true
       });
     } catch (e) {
       console.warn('Local notification failed:', e);
@@ -289,19 +294,16 @@ async function togglePushNotifications() {
     return;
   }
 
-  // Request permission
   const permission = await Notification.requestPermission();
   
   if (permission === 'granted') {
     if (pushToggle) pushToggle.classList.add('active');
     
-    // 🚨 FIXED: If Demo Mode, don't save to Supabase!
     if (isDemo()) {
       showToast('Demo notifications enabled!', 'success');
       Demo.update(s => { if(s.checklist) s.checklist.push = true; });
       renderChecklist();
     } else {
-      // If Live Mode, save to Supabase
       await subscribeUserToPush();
     }
   } else {
@@ -311,7 +313,6 @@ async function togglePushNotifications() {
 }
 
 async function subscribeUserToPush() {
-  // 🚨 FIXED: Block this from running in Demo mode to prevent RLS errors
   if (isDemo()) return;
 
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
