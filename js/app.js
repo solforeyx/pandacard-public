@@ -6,7 +6,7 @@
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
 
 // ============================================================
-// 🚨 REGISTER SERVICE WORKER IMMEDIATELY (Fixes PWABuilder error)
+// 🚨 REGISTER SERVICE WORKER IMMEDIATELY
 // ============================================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -69,7 +69,7 @@ const Demo = {
     if (APP.user) updateNotificationBadge();
     playNotificationSound();
     
-    // 🚨 NEW: Trigger local browser notification in Demo Mode
+    // 🚨 Trigger WhatsApp-style local browser notification for Demo Mode
     triggerLocalDemoNotification(title, body);
   },
   log(tx) {
@@ -87,11 +87,16 @@ const Demo = {
 function triggerLocalDemoNotification(title, body) {
   if (!("Notification" in window)) return;
   if (Notification.permission === "granted") {
-    new Notification(title, {
-      body: body,
-      icon: 'https://i.imgur.com/9aLmHyS.png',
-      badge: '/assets/icons/notification-icon.png'
-    });
+    try {
+      new Notification(title, {
+        body: body,
+        icon: 'https://i.imgur.com/9aLmHyS.png', // Right side large image
+        badge: '/assets/icons/notification-icon.png', // Left side small flat icon
+        vibrate: [200, 100, 200, 100, 200]
+      });
+    } catch (e) {
+      console.warn('Local notification failed:', e);
+    }
   }
 }
 
@@ -170,13 +175,15 @@ function navigateTo(section) {
   if (section === 'help') loadFAQ();
   if (section === 'dailyreward') loadDailyReward();
   
-  // 🚨 FIXED: Mark checklist items as done when they visit the section
+  // Mark checklist items as done when they visit the section
   if (isDemo()) {
     if (section === 'live') {
       Demo.update(s => { if(s.checklist) s.checklist.learn = true; });
+      renderChecklist();
     }
     if (section === 'announcements') {
       Demo.update(s => { if(s.checklist) s.checklist.announcement = true; });
+      renderChecklist();
     }
   }
 }
@@ -192,7 +199,7 @@ function closeSidebar() {
 }
 
 // ============================================================
-// PWA INSTALL LOGIC (WITH 12-HOUR COOLDOWN & DIRECT APK)
+// PWA INSTALL LOGIC
 // ============================================================
 function isPWAInstalled() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
@@ -270,25 +277,32 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function togglePushNotifications() {
-  const isGranted = Notification.permission === 'granted';
   const pushToggle = document.getElementById('settingsPushToggle');
 
-  if (isGranted) {
-    // If already granted, we can't easily revoke it from JS. Tell them to use settings.
+  if (Notification.permission === 'granted') {
     showToast('To disable notifications, go to your browser/app settings.', 'info');
+    return;
+  }
+
+  if (Notification.permission === 'denied') {
+    showToast('Notifications are blocked. Please allow them in your browser settings.', 'error');
     return;
   }
 
   // Request permission
   const permission = await Notification.requestPermission();
+  
   if (permission === 'granted') {
     if (pushToggle) pushToggle.classList.add('active');
-    await subscribeUserToPush();
     
-    // Mark checklist as done for demo
+    // 🚨 FIXED: If Demo Mode, don't save to Supabase!
     if (isDemo()) {
+      showToast('Demo notifications enabled!', 'success');
       Demo.update(s => { if(s.checklist) s.checklist.push = true; });
       renderChecklist();
+    } else {
+      // If Live Mode, save to Supabase
+      await subscribeUserToPush();
     }
   } else {
     showToast('Notification permission denied.', 'error');
@@ -297,6 +311,9 @@ async function togglePushNotifications() {
 }
 
 async function subscribeUserToPush() {
+  // 🚨 FIXED: Block this from running in Demo mode to prevent RLS errors
+  if (isDemo()) return;
+
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     showToast('Push notifications are not supported on this device.', 'error');
     return;
@@ -2227,7 +2244,7 @@ async function submitContact() {
 // DAILY REWARD
 // ============================================================
 async function loadDailyReward() {
-  // 🚨 FIXED: Dynamically update the Buy Coins buttons with current exchange rates
+  // Dynamically update the Buy Coins buttons with current exchange rates
   updateCoinPricesUI();
 
   if (isDemo()) {
@@ -2266,7 +2283,7 @@ async function loadDailyReward() {
   }
 }
 
-// 🚨 NEW: Function to convert hardcoded NGN button text to user currency
+// Function to convert hardcoded NGN button text to user currency
 function updateCoinPricesUI() {
   const section = document.getElementById('coinPurchaseSection');
   if (!section) return;
@@ -2577,7 +2594,7 @@ async function boot() {
 
   updateBalanceUI();
   
-  // 🚨 FIXED: Update Buy Coins UI immediately on boot
+  // Update Buy Coins UI immediately on boot
   updateCoinPricesUI();
 
   const hash = window.location.hash.replace('#', '') || 'dashboard';
