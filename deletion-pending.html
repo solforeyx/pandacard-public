@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Account Scheduled for Deletion — Panda Card</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/png" href="assets/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --gold: #FFD700;
+      --dark: #1A1A2E;
+      --dark2: #2D2D44;
+      --white: #FFFFFF;
+      --gray: #666;
+      --light-gray: #F8F8FC;
+      --border: #e8e8ed;
+      --red: #EF4444;
+      --red-soft: #FEE2E2;
+      --green: #10B981;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Poppins', -apple-system, sans-serif;
+      background: linear-gradient(160deg, #1A1A2E 0%, #2D2D44 100%);
+      color: var(--dark);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      width: 100%;
+      max-width: 540px;
+      background: var(--white);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+    }
+    .header {
+      background: var(--red);
+      color: var(--white);
+      padding: 32px 24px 24px;
+      text-align: center;
+    }
+    .header .icon-wrap {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 12px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .header .icon-wrap .material-icons {
+      font-size: 42px;
+      color: var(--white);
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .header p {
+      font-size: 13px;
+      opacity: 0.9;
+      line-height: 1.4;
+    }
+    .body { padding: 24px; }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--gray);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-title .material-icons { font-size: 16px; }
+
+    .reason-box {
+      background: var(--light-gray);
+      border-left: 4px solid var(--red);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--dark2);
+      margin-bottom: 20px;
+      word-break: break-word;
+    }
+
+    .timer-section {
+      text-align: center;
+      padding: 20px 0 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .timer-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--gray);
+      margin-bottom: 10px;
+    }
+    .timer-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin: 0 auto 12px;
+      max-width: 380px;
+    }
+    .timer-cell {
+      background: var(--dark);
+      color: var(--white);
+      border-radius: 10px;
+      padding: 12px 4px;
+      text-align: center;
+    }
+    .timer-num {
+      font-size: 26px;
+      font-weight: 900;
+      line-height: 1;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .timer-unit {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+    .timer-date {
+      font-size: 12px;
+      color: var(--gray);
+    }
+    .timer-date b { color: var(--dark); }
+
+    .warning-note {
+      background: var(--red-soft);
+      color: var(--red);
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    .warning-note b { font-weight: 700; }
+    .warning-note ul { margin: 6px 0 0 18px; padding: 0; }
+    .warning-note li { margin-bottom: 4px; }
+
+    .form-title {
+      font-size: 15px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .form-sub {
+      font-size: 12px;
+      color: var(--gray);
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .radio-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .radio-option:hover { border-color: #ccc; }
+    .radio-option.selected {
+      border-color: var(--dark);
+      background: var(--light-gray);
+    }
+    .radio-option input[type="radio"] {
+      margin-top: 3px;
+      accent-color: var(--dark);
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+    .radio-option .opt-body { flex: 1; }
+    .radio-option .opt-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .radio-option .opt-desc {
+      font-size: 11px;
+      color: var(--gray);
+      line-height: 1.4;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      padding: 12px 14px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 13px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s;
+      color: var(--dark);
+    }
+    textarea:focus { border-color: var(--dark); }
+
+    .btn {
+      width: 100%;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-primary {
+      background: var(--dark);
+      color: var(--white);
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--dark2); }
+    .btn-primary:disabled {
+      background: #b0b0b0;
+      cursor: not-allowed;
+    }
+    .btn .material-icons { font-size: 18px; }
+
+    .result-msg {
+      display: none;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 14px;
+    }
+    .result-msg.success { background: #D1FAE5; color: #065F46; display: block; }
+    .result-msg.error { background: var(--red-soft); color: var(--red); display: block; }
+
+    .footer-note {
+      text-align: center;
+      font-size: 11px;
+      color: var(--gray);
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      line-height: 1.5;
+    }
+    .footer-note a {
+      color: var(--dark);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .hidden { display: none !important; }
+    .loading-screen {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--white);
+    }
+    .loading-screen .material-icons {
+      font-size: 56px;
+      color: var(--gold);
+      animation: spin 1.5s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .expired-mode .header { background: var(--dark); }
+    .expired-mode .timer-cell { background: var(--red); }
+    .expired-mode .timer-num { color: var(--white); }
+  </style>
+</head>
+<body>
+
+  <div id="loadingScreen" class="loading-screen">
+    <span class="material-icons">hourglass_empty</span>
+    <p style="margin-top:16px;font-size:14px;">Checking your account status...</p>
+  </div>
+
+  <div id="mainContainer" class="container hidden">
+    <div class="header">
+      <div class="icon-wrap">
+        <span class="material-icons" id="headerIcon">warning_amber</span>
+      </div>
+      <h1 id="headerTitle">Account Scheduled for Deletion</h1>
+      <p id="headerSub">Your account is in a permanent deletion countdown.</p>
+    </div>
+
+    <div class="body">
+      <div class="section-title">
+        <span class="material-icons">info</span>
+        <span>Reason on file</span>
+      </div>
+      <div class="reason-box" id="reasonBox">—</div>
+
+      <div class="timer-section">
+        <div class="timer-label" id="timerLabel">Time remaining before permanent deletion</div>
+        <div class="timer-grid">
+          <div class="timer-cell">
+            <div class="timer-num" id="tDays">00</div>
+            <div class="timer-unit">Days</div>
+          </div>
+          <div class="timer-cell">
+            <div class="timer-num" id="tHours">00</div>
+            <div class="timer-unit">Hours</div>
+          </div>
+          <div class="timer-cell">
+            <div class="timer-num" id="tMins">00</div>
+            <div class="timer-unit">Mins</div>
+          </div>
+          <div class="timer-cell">
+            <div class="timer-num" id="tSecs">00</div>
+            <div class="timer-unit">Secs</div>
+          </div>
+        </div>
+        <div class="timer-date">
+          Scheduled deletion: <b id="scheduledDate">—</b>
+        </div>
+      </div>
+
+      <div class="warning-note">
+        <b>Important:</b>
+        <ul>
+          <li>When the timer ends, your account is <b>permanently and irreversibly deleted</b>.</li>
+          <li>You cannot create another account with this email until then.</li>
+          <li>All balances, cards, transactions, and history will be erased.</li>
+          <li>To stop the deletion, use the form below to <b>request a revival</b>.</li>
+        </ul>
+      </div>
+
+      <div id="formArea">
+        <div class="form-title">Submit a request</div>
+        <div class="form-sub">
+          Choose what you want to happen. Your message is sent to our support team.
+        </div>
+
+        <div class="radio-group">
+          <label class="radio-option selected" data-action="revive">
+            <input type="radio" name="delAction" value="revive" checked />
+            <div class="opt-body">
+              <div class="opt-title">Request Revival</div>
+              <div class="opt-desc">Ask support to restore my account and cancel the deletion.</div>
+            </div>
+          </label>
+          <label class="radio-option" data-action="delete_now">
+            <input type="radio" name="delAction" value="delete_now" />
+            <div class="opt-body">
+              <div class="opt-title">Delete Now</div>
+              <div class="opt-desc">Skip the countdown and delete my account permanently right now.</div>
+            </div>
+          </label>
+        </div>
+
+        <textarea id="reasonInput" placeholder="Explain briefly why you want this (minimum 5 characters)..."></textarea>
+
+        <button class="btn btn-primary" id="submitBtn" onclick="submitRequest()">
+          <span class="material-icons" id="submitIcon">send</span>
+          <span id="submitText">Send Request</span>
+        </button>
+
+        <div class="result-msg" id="resultMsg"></div>
+      </div>
+
+      <div id="expiredArea" class="hidden">
+        <div class="warning-note" style="margin-bottom:0;">
+          <b>The countdown has ended.</b> Your account is currently being deleted. You will not be able to log back in once it completes.
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      Need help? <a href="mailto:hello@solforeyx.com">Contact support</a>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const SUPABASE_URL = 'https://dxxhlaxdudtiktplwvbq.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4eGhsYXhkdWR0aWt0cGx3dmJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzNDUzNzIsImV4cCI6MjEwNzkyMTM3Mn0.tSFal0bYl1jO-EMjwq_9A0KLfD0YLLqO0F7kgXeZ2aI';
+
+      const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      let scheduledAt = 0;
+      let tickTimer = null;
+      let isSubmitting = false;
+      let currentUser = null;
+
+      function $(id) { return document.getElementById(id); }
+
+      function showLoading() {
+        $('loadingScreen').classList.remove('hidden');
+        $('mainContainer').classList.add('hidden');
+      }
+
+      function showMain() {
+        $('loadingScreen').classList.add('hidden');
+        $('mainContainer').classList.remove('hidden');
+      }
+
+      function pad(n) { return String(n).padStart(2, '0'); }
+
+      function formatDate(ts) {
+        const d = new Date(ts);
+        return d.toLocaleString('en-NG', {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        });
+      }
+
+      function tick() {
+        const now = Date.now();
+        const remaining = scheduledAt - now;
+
+        if (remaining <= 0) {
+          $('tDays').textContent = '00';
+          $('tHours').textContent = '00';
+          $('tMins').textContent = '00';
+          $('tSecs').textContent = '00';
+          enterExpiredMode();
+          return;
+        }
+
+        const secs = Math.floor(remaining / 1000);
+        const days = Math.floor(secs / 86400);
+        const hours = Math.floor((secs % 86400) / 3600);
+        const mins = Math.floor((secs % 3600) / 60);
+        const s = secs % 60;
+
+        $('tDays').textContent = pad(days);
+        $('tHours').textContent = pad(hours);
+        $('tMins').textContent = pad(mins);
+        $('tSecs').textContent = pad(s);
+      }
+
+      function enterExpiredMode() {
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+        document.body.classList.add('expired-mode');
+        $('headerIcon').textContent = 'delete_forever';
+        $('headerTitle').textContent = 'Account Being Deleted';
+        $('headerSub').textContent = 'The countdown has ended. Deletion in progress.';
+        $('timerLabel').textContent = 'Countdown ended';
+        $('formArea').classList.add('hidden');
+        $('expiredArea').classList.remove('hidden');
+      }
+
+      function setResult(msg, type) {
+        const el = $('resultMsg');
+        el.textContent = msg;
+        el.className = 'result-msg ' + type;
+      }
+
+      function clearResult() {
+        const el = $('resultMsg');
+        el.textContent = '';
+        el.className = 'result-msg';
+      }
+
+      async function submitRequest() {
+        if (isSubmitting) return;
+
+        const action = document.querySelector('input[name="delAction"]:checked').value;
+        const reason = $('reasonInput').value.trim();
+
+        if (reason.length < 5) {
+          setResult('Please provide a reason (at least 5 characters).', 'error');
+          return;
+        }
+
+        isSubmitting = true;
+        $('submitBtn').disabled = true;
+        $('submitIcon').textContent = 'hourglass_empty';
+        $('submitText').textContent = 'Sending...';
+        clearResult();
+
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          if (!session) {
+            setResult('Session expired. Please log in again.', 'error');
+            return;
+          }
+
+          const res = await sb.functions.invoke('request-account-revival', {
+            body: { action, reason }
+          });
+
+          if (res.error) throw new Error(res.error.message || 'Request failed');
+          if (res.data && res.data.error) throw new Error(res.data.error);
+
+          setResult(res.data?.message || 'Request sent successfully.', 'success');
+          $('reasonInput').value = '';
+
+          if (action === 'delete_now') {
+            setTimeout(() => {
+              window.location.reload();
+            }, 2000);
+          }
+        } catch (err) {
+          setResult(err.message || 'Something went wrong. Try again.', 'error');
+        } finally {
+          isSubmitting = false;
+          $('submitBtn').disabled = false;
+          $('submitIcon').textContent = 'send';
+          $('submitText').textContent = 'Send Request';
+        }
+      }
+
+      async function init() {
+        try {
+          const { data: { user } } = await sb.auth.getUser();
+
+          if (!user) {
+            window.location.href = 'auth.html';
+            return;
+          }
+
+          currentUser = user;
+
+          const { data: profile, error: profileErr } = await sb
+            .from('users')
+            .select('deletion_status, deletion_scheduled_at, deletion_reason')
+            .eq('id', user.id)
+            .single();
+
+          if (profileErr || !profile) {
+            showMain();
+            setResult('Could not load account details. Contact support.', 'error');
+            return;
+          }
+
+          if (profile.deletion_status !== 'pending_deletion') {
+            window.location.href = 'app.html';
+            return;
+          }
+
+          const reasonText = profile.deletion_reason || 'No reason provided.';
+          $('reasonBox').textContent = reasonText;
+
+          if (profile.deletion_scheduled_at) {
+            scheduledAt = new Date(profile.deletion_scheduled_at).getTime();
+            $('scheduledDate').textContent = formatDate(scheduledAt);
+          } else {
+            scheduledAt = Date.now();
+          }
+
+          showMain();
+          tick();
+          tickTimer = setInterval(tick, 1000);
+        } catch (err) {
+          console.error('Init failed:', err);
+          showMain();
+          setResult('Failed to load account. Please refresh the page.', 'error');
+        }
+      }
+
+      // Radio selection styling
+      document.querySelectorAll('.radio-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          document.querySelectorAll('.radio-option').forEach(o => o.classList.remove('selected'));
+          opt.classList.add('selected');
+        });
+      });
+
+      // Handle back button — prevents cached page from showing
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) window.location.reload();
+      });
+
+      init();
+    })();
+  </script>
+</body>
+</html>
