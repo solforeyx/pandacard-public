@@ -36,7 +36,8 @@ const APP = {
   livePublished: false,
   ratesLoaded: false,
   bulkSelected: [],
-  longPressTimer: null
+  longPressTimer: null,
+  botInterval: null // For Demo Mode Simulation
 };
 
 // ============================================================
@@ -68,8 +69,6 @@ const Demo = {
     });
     if (APP.user) updateNotificationBadge();
     playNotificationSound();
-    
-    // 🚨 Trigger WhatsApp-style local browser notification for Demo Mode
     triggerLocalDemoNotification(title, body);
   },
   log(tx) {
@@ -82,6 +81,64 @@ const Demo = {
 };
 
 // ============================================================
+// 🤖 DEMO SIMULATION ENGINE (BOTS)
+// ============================================================
+const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George", "Hannah", "Ian", "Julia"];
+
+function startDemoBotEngine() {
+  if (APP.botInterval) clearInterval(APP.botInterval);
+  
+  APP.botInterval = setInterval(() => {
+    if (!isDemo() || APP.cards.length === 0) return;
+    
+    // 1. Simulate a Bot Buying a Card
+    if (Math.random() > 0.5) {
+      const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
+      const randomUser = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+      Demo.notify(`${randomUser} bought a card!`, `${randomUser} just purchased ${randomCard.name} from the marketplace.`, 'info');
+    }
+
+    // 2. Simulate Price Fluctuations (Demand Engine)
+    const cardIndex = Math.floor(Math.random() * APP.cards.length);
+    const cardToChange = APP.cards[cardIndex];
+    if (cardToChange) {
+      const changePct = (Math.random() * 0.04) - 0.02; // +/- 2%
+      const newPrice = Math.round(cardToChange.current_price * (1 + changePct));
+      cardToChange.current_price = newPrice;
+      if (document.getElementById('section-dashboard').classList.contains('active') || document.getElementById('section-trade').classList.contains('active')) {
+        renderMarketplaceGrid();
+        renderTradeBuyListings();
+      }
+    }
+
+    // 3. Simulate a Bot Listing a Card in the Trade Market
+    if (Math.random() > 0.7) {
+      const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
+      const randomPrice = Math.round(randomCard.current_price * 1.1); // 10% markup
+      
+      Demo.update(s => {
+        s.listings = s.listings || [];
+        s.listings.push({
+          id: generateId('l'),
+          sellerId: 'bot_user',
+          cardId: randomCard.id,
+          price: randomPrice,
+          units: 1,
+          remaining: 1,
+          createdAt: Date.now(),
+          status: 'active',
+          current_effective_price: randomPrice
+        });
+      });
+      
+      if (document.getElementById('section-trade').classList.contains('active')) {
+        renderTradeBuyListings();
+      }
+    }
+  }, 30000); // Runs every 30 seconds
+}
+
+// ============================================================
 // LOCAL NOTIFICATION (For Demo Mode)
 // ============================================================
 async function triggerLocalDemoNotification(title, body) {
@@ -89,12 +146,11 @@ async function triggerLocalDemoNotification(title, body) {
   
   if (Notification.permission === "granted") {
     try {
-      // 🚨 FIXED: Using Service Worker instead of 'new Notification' to force Android heads-up popup
       const registration = await navigator.serviceWorker.ready;
       await registration.showNotification(title, {
         body: body,
-        icon: 'https://i.imgur.com/9aLmHyS.png', // Right side large image
-        badge: '/assets/icons/notification-icon.png', // Left side small flat icon
+        icon: 'https://i.imgur.com/9aLmHyS.png',
+        badge: '/assets/icons/notification-icon.png',
         vibrate: [200, 100, 200, 100, 200],
         tag: 'pandacard-demo',
         renotify: true
@@ -180,7 +236,6 @@ function navigateTo(section) {
   if (section === 'help') loadFAQ();
   if (section === 'dailyreward') loadDailyReward();
   
-  // Mark checklist items as done when they visit the section
   if (isDemo()) {
     if (section === 'live') {
       Demo.update(s => { if(s.checklist) s.checklist.learn = true; });
@@ -215,10 +270,8 @@ function installPWA() {
     deferredPrompt.prompt();
     deferredPrompt.userChoice.then((choiceResult) => {
       if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted the install prompt');
         hideInstallUI();
       } else {
-        console.log('User dismissed the install prompt');
         localStorage.setItem('pwa_prompt_dismissed', Date.now());
       }
       deferredPrompt = null;
@@ -228,7 +281,6 @@ function installPWA() {
   }
 }
 
-// 🚨 FIXED: Added the missing function to prevent the ReferenceError
 function closeInstallModal() {
   const modal = document.getElementById('installModal');
   if (modal) modal.classList.remove('open');
@@ -268,11 +320,8 @@ async function updateNotificationBadge() {
 
 function updateAppBadge(count) {
   if ('setAppBadge' in navigator) {
-    if (count > 0) {
-      navigator.setAppBadge(count).catch(() => {});
-    } else {
-      navigator.clearAppBadge().catch(() => {});
-    }
+    if (count > 0) navigator.setAppBadge(count).catch(() => {});
+    else navigator.clearAppBadge().catch(() => {});
   }
 }
 
@@ -607,7 +656,7 @@ function renderMarketplaceGrid() {
   let total = 0;
   sections.forEach(s => {
     if (grouped[s.key].length) {
-      html += `<div style="grid-column:1/-1;margin-top:8px;font-weight:700;color:${s.color};font-size:13px;display:flex;align-items:center;gap:6px;"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
+      html += `<div class="marketplace-section-title" style="color:${s.color};"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
       grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv); });
     }
   });
@@ -1233,7 +1282,6 @@ function filterInventory() {
 // ============================================================
 async function loadMining() {
   if (!isDemo()) {
-    // LIVE MODE MINING
     const sb = getSupabase();
     if (!sb) return;
     const today = new Date().toISOString().slice(0, 10);
@@ -1244,7 +1292,6 @@ async function loadMining() {
     document.getElementById('miningStartBtn').disabled = sessionsUsed >= 2;
     document.getElementById('miningCostInfo').textContent = sessionsUsed >= 2 ? 'Daily limit reached.' : 'Select 3 cards from inventory to mine.';
     
-    // Clear live slots
     ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) {
@@ -1310,7 +1357,6 @@ function tapMiningSlot() {
     const picked = APP.cards.find(c => c.id === nextId); if (picked) s.miningSlots.push(picked);
     renderMiningUI();
   } else {
-    // LIVE MODE SLOT SELECTION
     const emptySlot = ['miningSlot1', 'miningSlot2', 'miningSlot3'].find(id => !document.getElementById(id).dataset.cardId);
     if (!emptySlot) { showToast('All 3 slots full', 'info'); return; }
     
@@ -1333,7 +1379,6 @@ function tapMiningSlot() {
 
 async function startMining() {
   if (!isDemo()) {
-    // LIVE MODE MINING
     const slots = ['miningSlot1', 'miningSlot2', 'miningSlot3'].map(id => document.getElementById(id).dataset.cardId).filter(Boolean);
     if (slots.length !== 3) { showToast('Please select 3 cards', 'error'); return; }
     if (!confirm('Mine these 3 cards? They will be permanently burned.')) return;
@@ -1629,7 +1674,7 @@ async function submitDeposit() {
     try {
       const { data, error } = await getSupabase().functions.invoke('initialize-deposit', { body: { amount, gateway: APP.paymentMethod } });
       if (error || data?.error) throw new Error(data?.error || error.message);
-      window.location.href = data.url; // Redirect to Paystack/Flutterwave checkout
+      window.location.href = data.url; 
     } catch (err) {
       showToast(err.message, 'error');
       hideLoading();
@@ -1864,7 +1909,6 @@ function loadSettings() {
     langEl.textContent = languageName(saved);
   }
 
-  // INJECT PUSH NOTIFICATION TOGGLE
   const settingsContainer = document.querySelector('#section-settings .content-area');
   if (settingsContainer && !document.getElementById('settingsPushToggle')) {
     const pushSection = document.createElement('div');
@@ -1883,7 +1927,6 @@ function loadSettings() {
     `;
     settingsContainer.appendChild(pushSection);
 
-    // Set initial toggle state
     const pushToggle = document.getElementById('settingsPushToggle');
     if (pushToggle && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       pushToggle.classList.add('active');
@@ -1921,11 +1964,11 @@ async function savePin() {
     Demo.update(st => { 
       st.pin = newP; 
       if (!st.checklist) st.checklist = {};
-      st.checklist.pin = true; // Mark checklist as done
+      st.checklist.pin = true; 
     });
     showToast('PIN saved', 'success');
     closePinModal();
-    renderChecklist(); // Refresh dashboard checklist
+    renderChecklist(); 
   } else {
     showLoading('Saving PIN...');
     try {
@@ -2251,7 +2294,6 @@ async function submitContact() {
 // DAILY REWARD
 // ============================================================
 async function loadDailyReward() {
-  // Dynamically update the Buy Coins buttons with current exchange rates
   updateCoinPricesUI();
 
   if (isDemo()) {
@@ -2290,7 +2332,6 @@ async function loadDailyReward() {
   }
 }
 
-// Function to convert hardcoded NGN button text to user currency
 function updateCoinPricesUI() {
   const section = document.getElementById('coinPurchaseSection');
   if (!section) return;
@@ -2518,15 +2559,13 @@ async function loadCards() {
     
     const now = new Date().toISOString();
     
-    // Filter out disappearing cards that are not currently active
     APP.cards = (data || []).filter(c => {
       if (c.is_disappearing) {
-        // Only show if appears_at is in the past AND expires_at is in the future
         return c.disappear_appears_at && 
                c.disappear_appears_at <= now && 
                c.disappear_expires_at > now;
       }
-      return true; // Show all non-disappearing cards
+      return true; 
     });
 
   } catch (e) {
@@ -2597,6 +2636,10 @@ async function boot() {
       username: a.username
     };
     sendWelcomeNotification();
+    
+    // 🚨 START THE DEMO SIMULATION ENGINE
+    startDemoBotEngine(); 
+    
   } else {
     const profile = await refreshLiveProfile();
     APP.profile = profile;
@@ -2613,8 +2656,6 @@ async function boot() {
   await loadCards();
 
   updateBalanceUI();
-  
-  // Update Buy Coins UI immediately on boot
   updateCoinPricesUI();
 
   const hash = window.location.hash.replace('#', '') || 'dashboard';
