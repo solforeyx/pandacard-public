@@ -561,45 +561,38 @@ body.demo-mode .top-bar { top: 26px; }
    CARD GRID — HORIZONTAL CAROUSEL (2 ROWS)
    ============================================================ */
 
-.card-grid, #marketplaceGrid {
+#marketplaceGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.marketplace-section-title {
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+
+/* This is the new horizontal scrolling row for each section */
+.card-scroll-row {
   display: grid;
-  grid-auto-flow: column; /* Forces horizontal scrolling */
-  grid-template-rows: repeat(2, 1fr); /* Exactly 2 rows */
-  grid-auto-columns: 145px; /* Card width */
+  grid-auto-flow: column; 
+  grid-template-rows: repeat(2, 1fr); 
+  grid-auto-columns: 145px; 
   gap: 12px;
-  overflow-x: auto; /* Enables swiping left/right */
+  overflow-x: auto; 
   overflow-y: hidden;
-  padding-bottom: 12px;
+  padding-bottom: 8px;
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.card-grid::-webkit-scrollbar {
+.card-scroll-row::-webkit-scrollbar {
   display: none;
-}
-
-/* Make the section titles span 2 rows vertically */
-.marketplace-section-title {
-  grid-row: 1 / span 2;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  font-size: 13px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 0;
-  margin: 0;
-  border-left: 3px solid #ccc;
-  border-radius: 0 8px 8px 0;
-  background: #f4f4f8;
-  white-space: nowrap;
-}
-
-body.dark-mode .marketplace-section-title {
-  background: #1A1A2E;
-  border-left-color: #2D2D44;
 }
 
 .card-item {
@@ -1888,13 +1881,8 @@ body.dark-mode .marketplace-section-title {
 @media (max-width: 380px) {
   .balance-card .balance-earnings { font-size: 22px; }
   .stats-row { grid-template-columns: 1fr 1fr; }
-  .card-grid { gap: 10px; }
+  .card-scroll-row { gap: 10px; }
   .mining-card-grid { gap: 6px; }
-}
-
-/* We DO NOT change to 3 columns. It must stay 2 columns. */
-@media (min-width: 500px) {
-  /* Removed the 3-column override so it stays exactly 2 columns */
 }
 
 @media (min-width: 768px) {
