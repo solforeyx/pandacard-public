@@ -557,25 +557,49 @@ body.demo-mode .top-bar { top: 26px; }
 .section-header h2 { font-size: 18px; font-weight: 800; color: #1A1A2E; }
 .section-header .see-all { font-size: 13px; font-weight: 600; color: #FFD700; cursor: pointer; }
 
-/* Find this in your CSS and replace it with the code below */
-.card-grid {
+/* ============================================================
+   CARD GRID — HORIZONTAL CAROUSEL (2 ROWS)
+   ============================================================ */
+
+.card-grid, #marketplaceGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr); /* 2 Columns */
+  grid-auto-flow: column; /* Forces horizontal scrolling */
+  grid-template-rows: repeat(2, 1fr); /* Exactly 2 rows */
+  grid-auto-columns: 145px; /* Card width */
   gap: 12px;
-  
-  /* This limits the height to exactly 2 rows of cards */
-  max-height: 520px; 
-  overflow-y: auto; 
-  overflow-x: hidden;
-  
-  /* Hides scrollbar for a clean look */
-  -ms-overflow-style: none; 
-  scrollbar-width: none; 
-  padding-bottom: 10px;
+  overflow-x: auto; /* Enables swiping left/right */
+  overflow-y: hidden;
+  padding-bottom: 12px;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .card-grid::-webkit-scrollbar {
   display: none;
+}
+
+/* Make the section titles span 2 rows vertically */
+.marketplace-section-title {
+  grid-row: 1 / span 2;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 0;
+  margin: 0;
+  border-left: 3px solid #ccc;
+  border-radius: 0 8px 8px 0;
+  background: #f4f4f8;
+  white-space: nowrap;
+}
+
+body.dark-mode .marketplace-section-title {
+  background: #1A1A2E;
+  border-left-color: #2D2D44;
 }
 
 .card-item {
@@ -1868,8 +1892,9 @@ body.demo-mode .top-bar { top: 26px; }
   .mining-card-grid { gap: 6px; }
 }
 
+/* We DO NOT change to 3 columns. It must stay 2 columns. */
 @media (min-width: 500px) {
-  .card-grid { grid-template-columns: repeat(3, 1fr); }
+  /* Removed the 3-column override so it stays exactly 2 columns */
 }
 
 @media (min-width: 768px) {
