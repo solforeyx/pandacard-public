@@ -1,5 +1,5 @@
 // ============================================================
-// PANDA CARD — MAIN APP (SMART SIMULATION + FIXED MATH)
+// PANDA CARD — MAIN APP (COMPLETE — LIVE + DEMO + PUSH)
 // ============================================================
 
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
@@ -7,7 +7,7 @@ const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oB
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
-      .then(reg => console.log('SW registered successfully:', reg.scope))
+      .then(reg => console.log('SW registered:', reg.scope))
       .catch(err => console.warn('SW registration failed:', err));
   });
 }
@@ -83,27 +83,56 @@ const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George"
 function startDemoBotEngine() {
   if (APP.botInterval) clearInterval(APP.botInterval);
   
-  // Runs every 2 minutes to simulate real user activity
+  const s = Demo.state();
+  if (!s) return;
+
+  // 1. Seed the Trade Market immediately if empty
+  const activeListings = (s.listings || []).filter(l => l.status === 'active');
+  if (activeListings.length < 4) {
+    Demo.update(st => {
+      st.listings = st.listings || [];
+      for (let i = 0; i < 4; i++) {
+        const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
+        if (!randomCard) continue;
+        const randomPrice = Math.round(randomCard.current_price * 1.1); 
+        const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+        st.listings.push({
+          id: generateId('l'),
+          sellerId: 'bot_' + botName,
+          sellerName: botName,
+          cardId: randomCard.id,
+          price: randomPrice,
+          units: 2,
+          remaining: 2,
+          createdAt: Date.now(),
+          status: 'active',
+          current_effective_price: randomPrice
+        });
+      }
+    });
+  }
+
+  // 2. Run interval every 2 minutes
   APP.botInterval = setInterval(() => {
     if (!isDemo() || APP.cards.length === 0) return;
-    
-    const s = Demo.state();
-    if (!s) return;
+    const currentState = Demo.state();
+    if (!currentState) return;
 
-    // 1. Check if USER has active listings in Trade
-    const userListings = (s.listings || []).filter(l => l.sellerId === s.userId && l.status === 'active');
+    // Check if USER has active listings in Trade
+    const userListings = (currentState.listings || []).filter(l => l.sellerId === currentState.userId && l.status === 'active');
     
     if (userListings.length > 0 && Math.random() < 0.4) {
       const listingToBuy = userListings[Math.floor(Math.random() * userListings.length)];
       const randomUser = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
       
       Demo.update(st => {
-        const l = st.listings.find(x => x.id === listingToBuy.id);
-        l.remaining -= 1;
-        if (l.remaining <= 0) l.status = 'sold_out';
+        const lIndex = st.listings.findIndex(x => x.id === listingToBuy.id);
+        if (lIndex > -1) {
+          st.listings[lIndex].remaining -= 1;
+          if (st.listings[lIndex].remaining <= 0) st.listings[lIndex].status = 'sold_out';
+        }
         
-        // User gets EARNINGS (2x price for trade as per rules)
-        const earnAmount = l.price * 2; 
+        const earnAmount = listingToBuy.price * 2; 
         st.earningsBalance += earnAmount; 
         st.lifetimeEarned += earnAmount;
         st.totalTrades = (st.totalTrades || 0) + 1;
@@ -118,11 +147,11 @@ function startDemoBotEngine() {
       return; 
     }
 
-    // 2. Simulate a bot listing a card in Trade (20% chance)
-    const activeListings = (s.listings || []).filter(l => l.status === 'active');
-    if (activeListings.length < 6 && Math.random() < 0.2) {
+    // Simulate a bot listing a new card in Trade
+    const currentActive = (currentState.listings || []).filter(l => l.status === 'active');
+    if (currentActive.length < 6 && Math.random() < 0.3) {
       const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
-      if (!activeListings.find(l => l.cardId === randomCard.id)) {
+      if (!currentActive.find(l => l.cardId === randomCard.id)) {
         const randomPrice = Math.round(randomCard.current_price * 1.1); 
         const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
         
@@ -144,11 +173,11 @@ function startDemoBotEngine() {
         if (document.getElementById('section-trade').classList.contains('active')) renderTradeBuyListings();
       }
     }
-  }, 120000); // 2 minutes
+  }, 120000); 
 }
 
 // ============================================================
-// LOCAL NOTIFICATION
+// LOCAL NOTIFICATION (Stacking fixed)
 // ============================================================
 async function triggerLocalDemoNotification(title, body) {
   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
@@ -160,9 +189,7 @@ async function triggerLocalDemoNotification(title, body) {
         body: body,
         icon: 'https://i.imgur.com/9aLmHyS.png',
         badge: '/assets/icons/notification-icon.png',
-        vibrate: [200, 100, 200, 100, 200],
-        tag: 'pandacard-demo',
-        renotify: true
+        vibrate: [200, 100, 200, 100, 200]
       });
     } catch (e) {
       console.warn('Local notification failed:', e);
@@ -449,7 +476,6 @@ function renderStats() {
   const inv = getInventory();
   const b = getBalances();
   let portfolioValue = 0;
-  
   Object.keys(inv).forEach(id => {
     const c = APP.cards.find(x => x.id === id);
     if (c) {
@@ -457,7 +483,6 @@ function renderStats() {
       portfolioValue += (c.current_price || c.original_price || 0) * qty;
     }
   });
-  
   const pEl = document.getElementById('statPortfolio');
   if (pEl) pEl.textContent = formatPrice(portfolioValue);
   const cEl = document.getElementById('statCoins');
@@ -564,17 +589,14 @@ function renderPortfolioChart() {
   const inv = getInventory();
   const cardIds = Object.keys(inv);
   const days = APP.portfolioDays;
-
   const labels = [];
   const data = [];
   let baseValue = 0;
-  
+
   cardIds.forEach(id => {
     const c = APP.cards.find(x => x.id === id);
-    if (c) {
-      const qty = inv[id]?.quantity !== undefined ? inv[id].quantity : (inv[id] || 0);
-      baseValue += (c.current_price || c.original_price || 0) * qty;
-    }
+    const qty = inv[id]?.quantity !== undefined ? inv[id].quantity : (inv[id] || 0);
+    if (c) baseValue += (c.current_price || c.original_price || 0) * qty;
   });
 
   for (let i = days - 1; i >= 0; i--) {
@@ -673,20 +695,13 @@ function renderMarketplaceGrid() {
   let html = '';
   let total = 0;
   sections.forEach(s => {
-  if (grouped[s.key].length) {
-    // 1. Add the Title (Horizontal)
-    html += `<div class="marketplace-section-title" style="color:${s.color};"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
-    
-    // 2. Open the horizontal scrolling container for THIS section
-    html += `<div class="card-scroll-row">`;
-    
-    // 3. Add the cards
-    grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv); });
-    
-    // 4. Close the container
-    html += `</div>`;
-  }
-});
+    if (grouped[s.key].length) {
+      html += `<div class="marketplace-section-title" style="color:${s.color};"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
+      html += `<div class="card-scroll-row">`;
+      grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv); });
+      html += `</div>`;
+    }
+  });
   grid.innerHTML = html;
   const cnt = document.getElementById('marketplaceCount');
   if (cnt) cnt.textContent = total + ' cards';
@@ -703,10 +718,10 @@ function renderDashInventory() {
     grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><span class="material-icons">inbox</span><p>No cards yet</p></div>';
     return;
   }
-  grid.innerHTML = ids.slice(0, 6).map(id => {
+  grid.innerHTML = `<div class="card-scroll-row">` + ids.slice(0, 10).map(id => {
     const c = APP.cards.find(x => x.id === id);
     return c ? renderCardTile(c, inv) : '';
-  }).join('');
+  }).join('') + `</div>`;
 }
 
 function renderCardTile(card, inv) {
@@ -1158,18 +1173,26 @@ async function renderTradeBuyListings() {
   const el = document.getElementById('tradeBuyListings');
   if (!el) return;
   let listings = [];
-  
+  let myId = null;
+
   if (isDemo()) {
     listings = Demo.state()?.listings || [];
+    myId = Demo.account()?.id;
   } else {
     const { data } = await getSupabase().from('listings').select('*').eq('status', 'active').gt('remaining', 0);
     listings = data || [];
+    myId = APP.user.id;
   }
 
   listings = listings.filter(l => l.status === 'active' && l.remaining > 0);
   const inv = getInventory();
+
+  const mine = listings.filter(l => (l.sellerId || l.seller_id) === myId);
+  const others = listings.filter(l => (l.sellerId || l.seller_id) !== myId);
+  const sortedListings = [...mine, ...others];
+
   let html = '';
-  listings.forEach(l => {
+  sortedListings.forEach(l => {
     const card = APP.cards.find(c => c.id === (l.cardId || l.card_id));
     if (!card) return;
     if (APP.tradeSearch && !card.name.toLowerCase().includes(APP.tradeSearch)) return;
@@ -1177,16 +1200,25 @@ async function renderTradeBuyListings() {
       const status = card.is_vip ? 'vip' : (card.status || 'neutral');
       if (status !== APP.tradeFilter) return;
     }
+    
+    const isMine = (l.sellerId || l.seller_id) === myId;
     const qty = inv[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv[card.id] || 0);
     const owned = qty > 0;
+    
+    const borderStyle = isMine ? 'border: 2px solid #FFD700;' : '';
+    const badge = isMine ? '<span style="background:#FFD700;color:#000;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:800;margin-left:8px;">YOUR LISTING</span>' : '';
+
     html += `
-      <div class="listing-item">
+      <div class="listing-item" style="${borderStyle}">
         <div class="info">
-          <div class="name">${escapeHtml(card.name)}</div>
+          <div class="name" style="display:flex;align-items:center;">${escapeHtml(card.name)} ${badge}</div>
           <div class="price">${formatPrice(l.current_effective_price || l.price)}</div>
           <div class="units">${l.remaining}/${l.units} units</div>
         </div>
-        <button class="buy-btn" ${owned ? 'disabled style="background:#ccc;color:#666;"' : ''} onclick="buyFromTrade('${l.id}')">${owned ? 'Owned' : 'Buy'}</button>
+        ${isMine 
+          ? `<button class="buy-btn sell" onclick="cancelListing('${l.id}')">Cancel</button>` 
+          : `<button class="buy-btn" ${owned ? 'disabled style="background:#ccc;color:#666;"' : ''} onclick="buyFromTrade('${l.id}')">${owned ? 'Owned' : 'Buy'}</button>`
+        }
       </div>`;
   });
   el.innerHTML = html || '<div class="empty-state"><span class="material-icons">store</span><p>No listings available</p></div>';
@@ -1227,8 +1259,13 @@ async function buyFromTrade(listingId) {
       
       Demo.update(s => {
         s.depositBalance -= listing.price;
-        listing.remaining -= 1;
-        if (listing.remaining <= 0) listing.status = 'sold_out';
+        
+        const idx = s.listings.findIndex(x => x.id === listingId);
+        if (idx > -1) {
+          s.listings[idx].remaining -= 1;
+          if (s.listings[idx].remaining <= 0) s.listings[idx].status = 'sold_out';
+        }
+
         s.inventory = s.inventory || {};
         
         if (!s.inventory[listing.cardId]) {
@@ -1316,10 +1353,11 @@ function renderInventoryFull() {
   }
   const cnt = document.getElementById('inventoryCount');
   if (cnt) cnt.textContent = ids.length + ' cards';
-  grid.innerHTML = ids.map(id => {
+  
+  grid.innerHTML = `<div class="card-scroll-row">` + ids.map(id => {
     const c = APP.cards.find(x => x.id === id);
     return c ? renderCardTile(c, inv) : '';
-  }).join('');
+  }).join('') + `</div>`;
 }
 
 function filterInventory() {
@@ -1354,15 +1392,72 @@ async function loadMining() {
   
   const s = Demo.state();
   const today = new Date().toDateString();
+  
+  // 12-Hour Session Logic (12 AM to 11:59 AM = AM, 12 PM to 11:59 PM = PM)
+  const currentHour = new Date().getHours();
+  const currentSession = currentHour < 12 ? 'AM' : 'PM';
+  const sessionKey = `${today}-${currentSession}`;
+
+  // Reset daily counts at midnight
   if (s.miningLastReset !== today) {
-    Demo.update(st => { st.miningToday = 0; st.miningLastReset = today; });
+    Demo.update(st => { 
+      st.miningToday = 0; 
+      st.miningLastReset = today;
+      st.miningSessionId = null; 
+    });
   }
+
+  // Generate new cards if session changed
+  if (s.miningSessionId !== sessionKey) {
+    Demo.update(st => { 
+      st.miningSessionId = sessionKey; 
+      st.dailyMiningCards = []; 
+    });
+  }
+
+  // Generate Daily Mining Cards if empty
+  if (!s.dailyMiningCards || s.dailyMiningCards.length === 0) {
+    const stage = getStage();
+    const cfg = getStageConfig(stage);
+    const inv = getInventory();
+    
+    // Check cards in Marketplace OR in Inventory
+    let pool = APP.cards.filter(c => {
+      const price = c.current_price || c.original_price || 0;
+      return !c.is_bonus && !c.is_disappearing && c.is_active && price >= cfg.minCardPrice && price <= cfg.maxCardPrice;
+    });
+
+    // Include inventory cards that match stage but might not be in APP.cards
+    Object.keys(inv).forEach(id => {
+      if ((inv[id].marketplace_quantity || 0) > 0) {
+        const ownedCard = APP.cards.find(c => c.id === id);
+        if (ownedCard && !pool.find(p => p.id === id)) {
+          const price = ownedCard.current_price || ownedCard.original_price || 0;
+          if (!ownedCard.is_bonus && !ownedCard.is_disappearing && price >= cfg.minCardPrice && price <= cfg.maxCardPrice) {
+            pool.push(ownedCard);
+          }
+        }
+      }
+    });
+
+    // Shuffle and pick up to 3
+    const shuffled = [...pool].sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, 3).map(c => c.id);
+
+    Demo.update(st => { st.dailyMiningCards = selected; });
+  }
+  
+  // Map to slots
+  s.miningSlots = (s.dailyMiningCards || []).map(id => APP.cards.find(c => c.id === id)).filter(Boolean);
+  
   renderMiningUI();
 }
 
 function renderMiningUI() {
   const s = Demo.state();
   const sessions = s.miningToday || 0;
+  const inv = getInventory();
+
   const usedEl = document.getElementById('miningSessionsUsed');
   if (usedEl) usedEl.textContent = sessions + '/2';
   const earnEl = document.getElementById('miningTotalEarned');
@@ -1370,13 +1465,38 @@ function renderMiningUI() {
   const nextEl = document.getElementById('miningNextTime');
   if (nextEl) nextEl.textContent = sessions >= 2 ? 'Done' : 'Ready';
 
+  let allOwned = true;
+
   ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((id, i) => {
     const el = document.getElementById(id);
     if (!el) return;
     const card = s.miningSlots?.[i];
+    
     if (card) {
-      el.innerHTML = `<div class="card-image"><img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" /></div><div class="card-name">${escapeHtml(card.name)}</div>`;
+      const qty = inv[card.id]?.quantity || inv[card.id] || 0;
+      const mktQty = inv[card.id]?.marketplace_quantity || (typeof inv[card.id] === 'number' ? inv[card.id] : 0);
+      const hasMktCard = mktQty > 0;
+      
+      if (!hasMktCard) allOwned = false;
+
+      el.innerHTML = `
+        <div class="card-image" style="${!hasMktCard ? 'opacity: 0.5; filter: grayscale(1);' : ''}">
+          <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+        </div>
+        <div class="card-name" style="font-size:11px; margin-top:4px;">${escapeHtml(card.name)}</div>
+        ${!hasMktCard ? '<div style="font-size:9px;color:#FF4444;text-align:center;font-weight:700;margin-top:2px;">Need to buy</div>' : '<div style="font-size:9px;color:#22C55E;text-align:center;font-weight:700;margin-top:2px;">Ready</div>'}
+      `;
       el.style.opacity = 1;
+      el.dataset.cardId = card.id;
+      
+      el.onclick = () => {
+        if (!hasMktCard) {
+          showToast('Buy this card from Marketplace to mine it', 'info');
+          navigateTo('trade');
+        } else {
+          openCardModal(card.id);
+        }
+      };
     } else {
       el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;font-size:12px;"><span class="material-icons" style="font-size:28px;color:#ddd;display:block;margin-bottom:4px;">add</span>Empty</div>';
       el.style.opacity = 0.6;
@@ -1384,54 +1504,24 @@ function renderMiningUI() {
   });
 
   const btn = document.getElementById('miningStartBtn');
-  const ready = s.miningSlots?.length === 3 && sessions < 2;
+  const ready = s.miningSlots?.length === 3 && sessions < 2 && allOwned;
+  
   if (btn) {
     btn.disabled = !ready;
     btn.style.background = ready ? '#FFD700' : '#888';
   }
+  
   const infoEl = document.getElementById('miningCostInfo');
   if (infoEl) {
-    infoEl.textContent = ready ? 'All 3 cards ready.' : (sessions >= 2 ? 'Daily limit reached.' : 'Tap slots to add cards.');
+    if (sessions >= 2) infoEl.textContent = 'Daily limit reached.';
+    else if (!allOwned) infoEl.textContent = 'You need to buy missing cards from the Marketplace first.';
+    else if (ready) infoEl.textContent = 'All 3 cards ready.';
+    else infoEl.textContent = 'Loading cards...';
   }
 }
 
 function tapMiningSlot() {
-  const inv = getInventory();
-  // Enforce marketplace_quantity rule
-  const avail = Object.keys(inv).filter(id => {
-    if (inv[id] && typeof inv[id] === 'object') {
-      return (inv[id].marketplace_quantity || 0) > 0;
-    }
-    return (inv[id] || 0) > 0;
-  });
-  
-  if (!avail.length) { showToast('You need Marketplace cards to mine. Trade cards cannot be mined.', 'info'); return; }
-  
-  if (isDemo()) {
-    const s = Demo.state(); s.miningSlots = s.miningSlots || [];
-    const nextId = avail.find(id => !s.miningSlots.find(c => c.id === id));
-    if (!nextId) { showToast('All available cards added', 'info'); return; }
-    const picked = APP.cards.find(c => c.id === nextId); if (picked) s.miningSlots.push(picked);
-    renderMiningUI();
-  } else {
-    const emptySlot = ['miningSlot1', 'miningSlot2', 'miningSlot3'].find(id => !document.getElementById(id).dataset.cardId);
-    if (!emptySlot) { showToast('All 3 slots full', 'info'); return; }
-    
-    const nextId = avail.find(id => !['miningSlot1', 'miningSlot2', 'miningSlot3'].some(s => document.getElementById(s).dataset.cardId === id));
-    if (!nextId) { showToast('All available cards added', 'info'); return; }
-    
-    const picked = APP.cards.find(c => c.id === nextId);
-    if (picked) {
-      const el = document.getElementById(emptySlot);
-      el.innerHTML = `<div class="card-image"><img src="${escapeHtml(picked.image_url || 'https://i.imgur.com/9aLmHyS.png')}" /></div><div class="card-name">${escapeHtml(picked.name)}</div>`;
-      el.dataset.cardId = picked.id;
-      el.style.opacity = 1;
-      
-      const filled = ['miningSlot1', 'miningSlot2', 'miningSlot3'].filter(id => document.getElementById(id).dataset.cardId).length;
-      const btn = document.getElementById('miningStartBtn');
-      if (btn) { btn.disabled = filled < 3; btn.style.background = filled === 3 ? '#FFD700' : '#888'; }
-    }
-  }
+  // Handled automatically by Daily cards assignment now.
 }
 
 async function startMining() {
@@ -1465,6 +1555,11 @@ async function startMining() {
   const s = Demo.state();
   if (!s.miningSlots || s.miningSlots.length !== 3) { showToast('Need 3 cards', 'error'); return; }
   if (s.miningToday >= 2) { showToast('Daily limit', 'error'); return; }
+  
+  const inv = getInventory();
+  const allOwned = s.miningSlots.every(c => (inv[c.id]?.marketplace_quantity || 0) > 0 || (typeof inv[c.id] === 'number' && inv[c.id] > 0));
+  if (!allOwned) { showToast('You must own all 3 cards from the Marketplace to mine', 'error'); return; }
+
   const total = s.miningSlots.reduce((sum, c) => sum + (c.current_price || c.original_price || 0), 0);
   const reward = Math.round(total * 0.7);
   if (!confirm('Mine for ' + formatPrice(reward) + '? Cards will be burned.')) return;
@@ -1485,6 +1580,7 @@ async function startMining() {
     st.miningToday = (st.miningToday || 0) + 1;
     st.miningEarnedToday = (st.miningEarnedToday || 0) + reward;
     st.miningSlots = [];
+    st.dailyMiningCards = []; // Clear so new ones generate next time
   });
   Demo.notify('Mining Reward', 'You earned ' + formatPrice(reward), 'reward');
   const resEl = document.getElementById('miningResult');
@@ -1492,7 +1588,7 @@ async function startMining() {
   if (resEl) resEl.style.display = 'block';
   if (amtEl) amtEl.textContent = formatPrice(reward);
   playSound('reward');
-  renderMiningUI();
+  loadMining(); // Reload to pick new mining cards
   updateBalanceUI();
   setTimeout(() => { if (resEl) resEl.style.display = 'none'; }, 5000);
 }
@@ -1580,7 +1676,6 @@ async function loadDailyCombo() {
     Demo.update(st => { 
       st.dailyCombo = { assignedCardId: pick.id, date: today, completed: false }; 
       
-      // 🚨 SMART FIX: Auto-list the combo card in the Trade tab so the user can buy it!
       const existingListing = (st.listings || []).find(l => l.cardId === pick.id && l.status === 'active');
       if (!existingListing) {
         st.listings = st.listings || [];
@@ -1589,7 +1684,7 @@ async function loadDailyCombo() {
           sellerId: 'bot_combo',
           sellerName: 'Combo Bot',
           cardId: pick.id,
-          price: Math.round(pick.current_price * 1.05), // Slight markup
+          price: Math.round(pick.current_price * 1.05),
           units: 2,
           remaining: 2,
           createdAt: Date.now(),
@@ -1644,7 +1739,8 @@ async function completeDailyCombo(comboId) {
       
       showToast(`Combo complete! Earned ${data.total_dp} DP`, 'success');
       playSound('reward');
-      await refreshLiveProfile(); loadDailyCombo();
+      await refreshLiveProfile();
+      loadDailyCombo();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -1669,7 +1765,7 @@ async function completeDailyCombo(comboId) {
   Demo.notify('Daily Combo', 'You earned 12 DP', 'reward');
   showToast('+12 DP', 'success');
   playSound('reward');
-  loadDailyCombo(); updateBalanceUI();
+  loadDailyCombo();
 }
 
 // ============================================================
@@ -2275,6 +2371,24 @@ function loadReferral() {
   }
 }
 
+function simulateReferral() {
+  if (!isDemo()) return showToast('Only available in Demo', 'info');
+  const bonus = Math.floor(Math.random() * 3) + 1;
+  const rate = 10 + (getStage() - 1) * 5;
+  const coinsEarned = bonus * rate;
+  
+  Demo.update(s => {
+    s.totalReferrals = (s.totalReferrals || 0) + bonus;
+    s.referralCoins = (s.referralCoins || 0) + coinsEarned;
+    s.coins = (s.coins || 0) + coinsEarned;
+  });
+  
+  Demo.notify('New Referral!', `${bonus} user(s) joined using your link! Earned ${coinsEarned} PC.`, 'reward');
+  showToast(`Simulated ${bonus} referrals!`, 'success');
+  loadReferral();
+  updateBalanceUI();
+}
+
 function copyReferral() {
   const code = document.getElementById('referralCode').value;
   const link = window.location.origin + '/auth.html?ref=' + code;
@@ -2284,7 +2398,7 @@ function copyReferral() {
 function shareReferral() {
   const code = document.getElementById('referralCode').value;
   const link = window.location.origin + '/auth.html?ref=' + code;
-  if (navigator.share) navigator.share({ title: 'Panda Card', text: 'Join Panda Card', url: link }).catch(copyReferral);
+  if (navigator.share) navigator.share({ title: 'Panda Card', text: 'Join Panda Card', link }).catch(copyReferral);
   else copyReferral();
 }
 
@@ -2821,3 +2935,4 @@ window.subscribeUserToPush = subscribeUserToPush;
 window.togglePushNotifications = togglePushNotifications;
 window.installPWA = installPWA;
 window.closeInstallModal = closeInstallModal;
+window.simulateReferral = simulateReferral;
