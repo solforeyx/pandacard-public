@@ -673,11 +673,20 @@ function renderMarketplaceGrid() {
   let html = '';
   let total = 0;
   sections.forEach(s => {
-    if (grouped[s.key].length) {
-      html += `<div class="marketplace-section-title" style="color:${s.color};"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
-      grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv); });
-    }
-  });
+  if (grouped[s.key].length) {
+    // 1. Add the Title (Horizontal)
+    html += `<div class="marketplace-section-title" style="color:${s.color};"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
+    
+    // 2. Open the horizontal scrolling container for THIS section
+    html += `<div class="card-scroll-row">`;
+    
+    // 3. Add the cards
+    grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv); });
+    
+    // 4. Close the container
+    html += `</div>`;
+  }
+});
   grid.innerHTML = html;
   const cnt = document.getElementById('marketplaceCount');
   if (cnt) cnt.textContent = total + ' cards';
