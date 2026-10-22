@@ -557,21 +557,21 @@ body.demo-mode .top-bar { top: 26px; }
 .section-header h2 { font-size: 18px; font-weight: 800; color: #1A1A2E; }
 .section-header .see-all { font-size: 13px; font-weight: 600; color: #FFD700; cursor: pointer; }
 
-/* ============================================================
-   CARD GRID — FIXED TO 2 COLUMNS & SCROLLABLE
-   ============================================================ */
-
+/* Find this in your CSS and replace it with the code below */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, 1fr); /* 2 Columns */
   gap: 12px;
-  /* Limits height to show exactly 2 rows */
-  max-height: 680px;
-  overflow-y: auto;
-  padding-bottom: 4px;
-  /* Hides scrollbar for a clean mobile look */
+  
+  /* This limits the height to exactly 2 rows of cards */
+  max-height: 520px; 
+  overflow-y: auto; 
+  overflow-x: hidden;
+  
+  /* Hides scrollbar for a clean look */
   -ms-overflow-style: none; 
   scrollbar-width: none; 
+  padding-bottom: 10px;
 }
 
 .card-grid::-webkit-scrollbar {
