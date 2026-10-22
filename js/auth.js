@@ -224,6 +224,18 @@ async function liveLogin(email, password) {
   });
 
   if (error) return { error: error.message };
+
+  // ✅ FIXED: Check for pending deletion before allowing login
+  try {
+    const { data: profile } = await sb.from('users').select('deletion_status').eq('id', data.user.id).single();
+    if (profile && profile.deletion_status === 'pending_deletion') {
+      window.location.href = 'deletion-pending.html';
+      return { error: 'Account scheduled for deletion.', redirect: true };
+    }
+  } catch (err) {
+    console.warn('Could not verify deletion status on login:', err);
+  }
+
   return { user: data.user, session: data.session };
 }
 
@@ -312,6 +324,16 @@ async function requireAuth(redirectTo) {
     window.location.href = redirectTo || 'auth.html';
     return null;
   }
+
+  // ✅ FIXED: Check deletion status for live mode on protected pages
+  if (!isDemo()) {
+    const profile = await liveGetProfile(user.id);
+    if (profile && profile.deletion_status === 'pending_deletion') {
+      window.location.href = 'deletion-pending.html';
+      return null;
+    }
+  }
+  
   return user;
 }
 
