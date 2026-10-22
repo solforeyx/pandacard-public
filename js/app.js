@@ -83,15 +83,13 @@ const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George"
 function startDemoBotEngine() {
   if (APP.botInterval) clearInterval(APP.botInterval);
   
-  // Fast interval for active demo (every 30 seconds)
   APP.botInterval = setInterval(() => {
     if (!isDemo() || APP.cards.length === 0) return;
     const s = Demo.state();
     if (!s) return;
 
-    // 1. Seed the Trade Market continuously
     const activeListings = (s.listings || []).filter(l => l.status === 'active');
-    if (activeListings.length < 5 && Math.random() < 0.6) {
+    if (activeListings.length < 4 && Math.random() < 0.5) {
       const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
       if (randomCard && !activeListings.find(l => l.cardId === randomCard.id)) {
         const randomPrice = Math.round(randomCard.current_price * 1.1); 
@@ -116,33 +114,45 @@ function startDemoBotEngine() {
       }
     }
 
-    // 2. Bots buy USER's active listings
-    const userListings = (s.listings || []).filter(l => l.sellerId === s.userId && l.status === 'active');
-    if (userListings.length > 0 && Math.random() < 0.7) {
-      const listingToBuy = userListings[Math.floor(Math.random() * userListings.length)];
-      const randomUser = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+    if (s.lastBotPurchaseAt) {
+      const elapsed = Date.now() - s.lastBotPurchaseAt;
       
-      Demo.update(st => {
-        const lIndex = st.listings.findIndex(x => x.id === listingToBuy.id);
-        if (lIndex > -1) {
-          st.listings[lIndex].remaining -= 1;
-          if (st.listings[lIndex].remaining <= 0) st.listings[lIndex].status = 'sold_out';
-        }
-        
-        const earnAmount = listingToBuy.price; // They pay per unit
-        st.earningsBalance += earnAmount; 
-        st.lifetimeEarned += earnAmount;
-        st.totalTrades = (st.totalTrades || 0) + 1;
-      });
+      if (elapsed >= 10 * 60 * 1000) {
+        const userListings = (s.listings || [])
+          .filter(l => l.sellerId === s.userId && l.status === 'active')
+          .sort((a, b) => a.createdAt - b.createdAt);
 
-      Demo.log({ type: 'trade_sell', amount: listingToBuy.price });
-      Demo.notify('Card Sold!', `${randomUser} bought 1 unit of your ${APP.cards.find(c=>c.id===listingToBuy.cardId)?.name} for ₦${listingToBuy.price.toLocaleString()}!`, 'success');
-      
-      if (document.getElementById('section-trade').classList.contains('active')) loadTrade();
-      if (document.getElementById('section-dashboard').classList.contains('active')) loadDashboard();
-      if (document.getElementById('section-wallet').classList.contains('active')) loadWallet();
+        if (userListings.length > 0) {
+          const listingToBuy = userListings[0];
+          const randomUser = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+          
+          Demo.update(st => {
+            const lIndex = st.listings.findIndex(x => x.id === listingToBuy.id);
+            if (lIndex > -1) {
+              st.listings[lIndex].remaining -= 1;
+              if (st.listings[lIndex].remaining <= 0) {
+                st.listings[lIndex].status = 'sold_out';
+              }
+            }
+            
+            st.earningsBalance += listingToBuy.price; 
+            st.lifetimeEarned += listingToBuy.price;
+            st.totalTrades = (st.totalTrades || 0) + 1;
+            st.lastBotPurchaseAt = Date.now(); 
+          });
+
+          Demo.log({ type: 'trade_sell', amount: listingToBuy.price });
+          Demo.notify('Card Sold!', `${randomUser} bought 1 unit of your ${APP.cards.find(c=>c.id===listingToBuy.cardId)?.name} for ₦${listingToBuy.price.toLocaleString()}!`, 'success');
+          
+          if (document.getElementById('section-trade').classList.contains('active')) loadTrade();
+          if (document.getElementById('section-dashboard').classList.contains('active')) loadDashboard();
+          if (document.getElementById('section-wallet').classList.contains('active')) loadWallet();
+        } else {
+          Demo.update(st => { st.lastBotPurchaseAt = Date.now(); });
+        }
+      }
     }
-  }, 30000); 
+  }, 60000);
 }
 
 // ============================================================
@@ -154,7 +164,6 @@ async function triggerLocalDemoNotification(title, body) {
   if (Notification.permission === "granted") {
     try {
       const registration = await navigator.serviceWorker.ready;
-      // NO TAG means they will stack!
       await registration.showNotification(title, {
         body: body,
         icon: 'https://i.imgur.com/9aLmHyS.png',
@@ -717,11 +726,23 @@ function renderCardTile(card, inv) {
   const selected = APP.bulkSelected.includes(card.id);
   const selBorder = selected ? 'box-shadow:0 0 0 3px #22C55E;' : '';
 
+  let timerHtml = '';
+  if (card.is_disappearing && card.disappear_expires_at) {
+    const expires = new Date(card.disappear_expires_at).getTime();
+    const now = Date.now();
+    const diff = expires - now;
+    if (diff > 0) {
+      const hours = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      timerHtml = `<div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.7);color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;">${hours}h ${mins}m</div>`;
+    }
+  }
+
   return `
     <div class="card-item ${frameClass}" style="${selBorder}" data-card-id="${card.id}" onclick="cardTileClick('${card.id}')" onmousedown="startLongPress('${card.id}')" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()" ontouchstart="startLongPress('${card.id}')" ontouchend="cancelLongPress()">
       <div class="card-image">
         <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="${escapeHtml(card.name)}" loading="lazy" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
-        ${badge}${owned}
+        ${badge}${owned}${timerHtml}
         ${selected ? '<div style="position:absolute;bottom:8px;right:8px;background:#22C55E;color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">✓</div>' : ''}
       </div>
       <div class="card-name">${escapeHtml(card.name)}</div>
@@ -809,7 +830,6 @@ function openCardModal(cardId) {
     if (hasBought) {
       actions = `<button class="btn-buy" onclick="closeCardModal();showToast('Look in Trade to buy again','info')">Find in Trade</button>`;
     } else {
-      // Demand button added here
       actions = `
         <button class="btn-buy" onclick="closeCardModal();buyFromMarketplace('${cardId}')">Buy — ${formatPrice(currentPrice)} + ${coinFee} PC</button>
         <button class="btn-demand" onclick="demandCard('${cardId}')">Demand (Request this card)</button>
@@ -837,11 +857,20 @@ function closeCardModal() { document.getElementById('cardModal').classList.remov
 
 async function demandCard(cardId) {
   if (!isDemo()) {
-    showToast('Demand submitted (Live)', 'success');
+    showLoading('Submitting demand...');
+    try {
+      const { data, error } = await getSupabase().functions.invoke('demand-card', { body: { cardId } });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      showToast('Demand submitted!', 'success');
+      playSound('reward');
+    } catch (err) {
+      showToast(err.message || 'Demand failed', 'error');
+    } finally {
+      hideLoading();
+    }
     closeCardModal();
     return;
   }
-  // Simulate demand in Demo
   Demo.update(st => {
     if (!st.demands) st.demands = [];
     st.demands.push({ cardId, createdAt: Date.now() });
@@ -1003,6 +1032,8 @@ async function confirmSell(cardId) {
           coinFeePaid: CONFIG.LISTING_COIN_FEE,
           current_effective_price: price
         });
+        
+        if (!s.lastBotPurchaseAt) s.lastBotPurchaseAt = Date.now();
       });
       Demo.log({ type: 'listing_create', cardId, cardName: card.name, amount: price });
       showToast('Listed successfully', 'success'); playSound('reward'); closeSellModal();
@@ -1105,6 +1136,8 @@ async function confirmBulkSell() {
             current_effective_price: prices[cardId]
           });
         }
+        
+        if (!s.lastBotPurchaseAt) s.lastBotPurchaseAt = Date.now();
       });
     } else {
       for (const cardId of APP.bulkSelected) {
@@ -1195,11 +1228,9 @@ async function renderTradeBuyListings() {
     const qty = inv[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv[card.id] || 0);
     const owned = qty > 0;
     
-    // RED TEXT INSTEAD OF YELLOW BOX
     const borderStyle = isMine ? 'border: 1px solid #FF4444;' : '';
     const badge = isMine ? '<span style="color:#FF4444;font-size:10px;font-weight:800;margin-left:8px;">(YOUR LISTING)</span>' : '';
     
-    // CANNOT CANCEL IF 1 UNIT SOLD
     const canCancel = isMine && l.remaining === l.units;
 
     html += `
@@ -1295,7 +1326,7 @@ async function buyFromTrade(listingId) {
 
 async function cancelListing(listingId) {
   const s = Demo.state();
-  const l = s.listings.find(x => x.id === listingId);
+  const l = s?.listings?.find(x => x.id === listingId);
   if (l && l.remaining !== l.units) {
     return showToast("You cannot cancel after 1 unit is sold. Wait for the second buyer.", "error");
   }
@@ -1359,10 +1390,14 @@ function renderInventoryFull() {
   const cnt = document.getElementById('inventoryCount');
   if (cnt) cnt.textContent = ids.length + ' cards';
   
-  grid.innerHTML = `<div class="card-scroll-row">` + ids.map(id => {
-    const c = APP.cards.find(x => x.id === id);
-    return c ? renderCardTile(c, inv) : '';
-  }).join('') + `</div>`;
+  grid.innerHTML = `
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+      ${ids.map(id => {
+        const c = APP.cards.find(x => x.id === id);
+        return c ? renderCardTile(c, inv) : '';
+      }).join('')}
+    </div>
+  `;
 }
 
 function filterInventory() {
@@ -1398,7 +1433,6 @@ async function loadMining() {
   const s = Demo.state();
   const today = new Date().toDateString();
   
-  // 12-Hour Session Logic
   const currentHour = new Date().getHours();
   const currentSession = currentHour < 12 ? 'AM' : 'PM';
   const sessionKey = `${today}-${currentSession}`;
@@ -1418,18 +1452,15 @@ async function loadMining() {
     });
   }
 
-  // Pick 3 cards strictly
   if (!s.dailyMiningCards || s.dailyMiningCards.length !== 3) {
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
-    // Get all valid cards for stage
     let pool = APP.cards.filter(c => {
       const price = c.current_price || c.original_price || 0;
       return !c.is_bonus && c.is_disappearing && c.is_active && price >= cfg.minCardPrice && price <= cfg.maxCardPrice;
     });
     
-    // Fallback if pool is too small
     if (pool.length < 3) {
         pool = APP.cards.filter(c => !c.is_bonus && c.is_active);
     }
@@ -1437,7 +1468,6 @@ async function loadMining() {
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
     let selected = shuffled.slice(0, 3).map(c => c.id);
     
-    // Pad if still less than 3
     while (selected.length < 3 && APP.cards.length > 0) {
         selected.push(APP.cards[0].id);
     }
@@ -1577,7 +1607,7 @@ async function startMining() {
     st.miningToday = (st.miningToday || 0) + 1;
     st.miningEarnedToday = (st.miningEarnedToday || 0) + reward;
     st.miningSlots = [];
-    st.dailyMiningCards = []; // Clear so new ones generate next time
+    st.dailyMiningCards = [];
   });
   Demo.notify('Mining Reward', 'You earned ' + formatPrice(reward), 'reward');
   const resEl = document.getElementById('miningResult');
@@ -1585,7 +1615,7 @@ async function startMining() {
   if (resEl) resEl.style.display = 'block';
   if (amtEl) amtEl.textContent = formatPrice(reward);
   playSound('reward');
-  loadMining(); // Reload to pick new mining cards
+  loadMining();
   updateBalanceUI();
   setTimeout(() => { if (resEl) resEl.style.display = 'none'; }, 5000);
 }
@@ -1731,7 +1761,10 @@ async function completeDailyCombo(comboId) {
   if (!isDemo()) {
     showLoading('Completing combo...');
     try {
-      const { data, error } = await getSupabase().functions.invoke('daily-combo', { body: { action: 'complete', comboId } });
+      const { data, error } = await getSupabase().functions.invoke(
+        'daily-combo?action=complete',
+        { body: { comboId } }
+      );
       if (error || data?.error) throw new Error(data?.error || error.message);
       
       showToast(`Combo complete! Earned ${data.total_dp} DP`, 'success');
@@ -2190,6 +2223,7 @@ async function saveChangePassword() {
 function openDeleteAccountModal() { document.getElementById('deleteAccountModal').classList.add('open'); }
 function closeDeleteAccountModal() { document.getElementById('deleteAccountModal').classList.remove('open'); }
 
+// ✅ FIXED: Live mode now actually deletes account (30-day countdown via backend)
 async function confirmDeleteAccount() {
   const v = document.getElementById('deleteConfirmInput').value.trim();
   if (v !== 'DELETE') { showToast('Type DELETE to confirm', 'error'); return; }
@@ -2207,7 +2241,22 @@ async function confirmDeleteAccount() {
     showToast('Account deleted', 'success');
     setTimeout(() => { window.location.href = 'auth.html'; }, 800);
   } else {
-    showToast('Contact support to delete live account.', 'info');
+    if (!confirm('This will start a 30-day permanent deletion countdown.\n\nYou can request revival before the timer ends. After that, your account and ALL data will be permanently erased.\n\nContinue?')) return;
+    
+    showLoading('Scheduling deletion...');
+    try {
+      const { data, error } = await getSupabase().functions.invoke('request-account-deletion', {
+        body: { reason: 'User requested from settings', days: 30 }
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      
+      closeDeleteAccountModal();
+      showToast('Account scheduled for deletion. Redirecting...', 'success');
+      setTimeout(() => { window.location.href = 'deletion-pending.html'; }, 1200);
+    } catch (err) {
+      hideLoading();
+      showToast(err.message || 'Failed to submit deletion request', 'error');
+    }
   }
 }
 
@@ -2757,13 +2806,30 @@ async function loadCards() {
     
     APP.cards = (data || []).filter(c => {
       if (c.is_disappearing) {
-        if (isDemo()) return true; // Force show in demo
+        if (isDemo()) {
+           const app = c.disappear_appears_at;
+           const exp = c.disappear_expires_at;
+           if (!app || !exp) return true;
+           return app <= now && exp > now;
+        }
         return c.disappear_appears_at && 
                c.disappear_appears_at <= now && 
                c.disappear_expires_at > now;
       }
       return true; 
     });
+
+    {
+      const userSeed = APP.user?.id || 'demo_seed';
+      const visiblePct = isDemo() ? 50 : 80;
+      APP.cards = APP.cards.filter(c => {
+        if (c.is_disappearing) return true;
+        const hashString = `${userSeed}-${c.id}`;
+        let hash = 0;
+        for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
+        return Math.abs(hash) % 100 < visiblePct;
+      });
+    }
 
   } catch (e) {
     console.error('loadCards failed', e);
@@ -2840,6 +2906,11 @@ async function boot() {
     const profile = await refreshLiveProfile();
     APP.profile = profile;
     if (profile) {
+      // ✅ FIXED: Redirect to deletion-pending page if account is scheduled for deletion
+      if (profile.deletion_status === 'pending_deletion') {
+        window.location.href = 'deletion-pending.html';
+        return;
+      }
       window.currentUserProfile = {
         currency: profile.currency || 'NGN',
         name: profile.full_name,
