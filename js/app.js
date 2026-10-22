@@ -1,13 +1,9 @@
 // ============================================================
-// PANDA CARD — MAIN APP (COMPLETE — LIVE + DEMO + PUSH)
+// PANDA CARD — MAIN APP (SMART SIMULATION + FIXED MATH)
 // ============================================================
 
-// 🔴 REPLACE THIS WITH YOUR ACTUAL VAPID PUBLIC KEY
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
 
-// ============================================================
-// 🚨 REGISTER SERVICE WORKER IMMEDIATELY
-// ============================================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
@@ -16,9 +12,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// PWA INSTALL PROMPT VARIABLES
 let deferredPrompt = null;
-const INSTALL_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
+const INSTALL_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 const APP = {
   user: null,
@@ -37,7 +32,7 @@ const APP = {
   ratesLoaded: false,
   bulkSelected: [],
   longPressTimer: null,
-  botInterval: null // For Demo Mode Simulation
+  botInterval: null
 };
 
 // ============================================================
@@ -81,65 +76,79 @@ const Demo = {
 };
 
 // ============================================================
-// 🤖 DEMO SIMULATION ENGINE (BOTS)
+// 🤖 SMART DEMO SIMULATION ENGINE
 // ============================================================
-const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George", "Hannah", "Ian", "Julia"];
+const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George", "Hannah"];
 
 function startDemoBotEngine() {
   if (APP.botInterval) clearInterval(APP.botInterval);
   
+  // Runs every 2 minutes to simulate real user activity
   APP.botInterval = setInterval(() => {
     if (!isDemo() || APP.cards.length === 0) return;
     
-    // 1. Simulate a Bot Buying a Card
-    if (Math.random() > 0.5) {
-      const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
+    const s = Demo.state();
+    if (!s) return;
+
+    // 1. Check if USER has active listings in Trade
+    const userListings = (s.listings || []).filter(l => l.sellerId === s.userId && l.status === 'active');
+    
+    if (userListings.length > 0 && Math.random() < 0.4) {
+      const listingToBuy = userListings[Math.floor(Math.random() * userListings.length)];
       const randomUser = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-      Demo.notify(`${randomUser} bought a card!`, `${randomUser} just purchased ${randomCard.name} from the marketplace.`, 'info');
-    }
-
-    // 2. Simulate Price Fluctuations (Demand Engine)
-    const cardIndex = Math.floor(Math.random() * APP.cards.length);
-    const cardToChange = APP.cards[cardIndex];
-    if (cardToChange) {
-      const changePct = (Math.random() * 0.04) - 0.02; // +/- 2%
-      const newPrice = Math.round(cardToChange.current_price * (1 + changePct));
-      cardToChange.current_price = newPrice;
-      if (document.getElementById('section-dashboard').classList.contains('active') || document.getElementById('section-trade').classList.contains('active')) {
-        renderMarketplaceGrid();
-        renderTradeBuyListings();
-      }
-    }
-
-    // 3. Simulate a Bot Listing a Card in the Trade Market
-    if (Math.random() > 0.7) {
-      const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
-      const randomPrice = Math.round(randomCard.current_price * 1.1); // 10% markup
       
-      Demo.update(s => {
-        s.listings = s.listings || [];
-        s.listings.push({
-          id: generateId('l'),
-          sellerId: 'bot_user',
-          cardId: randomCard.id,
-          price: randomPrice,
-          units: 1,
-          remaining: 1,
-          createdAt: Date.now(),
-          status: 'active',
-          current_effective_price: randomPrice
-        });
+      Demo.update(st => {
+        const l = st.listings.find(x => x.id === listingToBuy.id);
+        l.remaining -= 1;
+        if (l.remaining <= 0) l.status = 'sold_out';
+        
+        // User gets EARNINGS (2x price for trade as per rules)
+        const earnAmount = l.price * 2; 
+        st.earningsBalance += earnAmount; 
+        st.lifetimeEarned += earnAmount;
+        st.totalTrades = (st.totalTrades || 0) + 1;
       });
+
+      Demo.log({ type: 'trade_sell', amount: listingToBuy.price * 2 });
+      Demo.notify('Card Sold!', `${randomUser} bought your card for ₦${(listingToBuy.price * 2).toLocaleString()}!`, 'success');
       
-      if (document.getElementById('section-trade').classList.contains('active')) {
-        renderTradeBuyListings();
+      if (document.getElementById('section-trade').classList.contains('active')) loadTrade();
+      if (document.getElementById('section-dashboard').classList.contains('active')) loadDashboard();
+      if (document.getElementById('section-wallet').classList.contains('active')) loadWallet();
+      return; 
+    }
+
+    // 2. Simulate a bot listing a card in Trade (20% chance)
+    const activeListings = (s.listings || []).filter(l => l.status === 'active');
+    if (activeListings.length < 6 && Math.random() < 0.2) {
+      const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
+      if (!activeListings.find(l => l.cardId === randomCard.id)) {
+        const randomPrice = Math.round(randomCard.current_price * 1.1); 
+        const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+        
+        Demo.update(st => {
+          st.listings = st.listings || [];
+          st.listings.push({
+            id: generateId('l'),
+            sellerId: 'bot_' + botName,
+            sellerName: botName,
+            cardId: randomCard.id,
+            price: randomPrice,
+            units: 2,
+            remaining: 2,
+            createdAt: Date.now(),
+            status: 'active',
+            current_effective_price: randomPrice
+          });
+        });
+        if (document.getElementById('section-trade').classList.contains('active')) renderTradeBuyListings();
       }
     }
-  }, 30000); // Runs every 30 seconds
+  }, 120000); // 2 minutes
 }
 
 // ============================================================
-// LOCAL NOTIFICATION (For Demo Mode)
+// LOCAL NOTIFICATION
 // ============================================================
 async function triggerLocalDemoNotification(title, body) {
   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
@@ -440,10 +449,15 @@ function renderStats() {
   const inv = getInventory();
   const b = getBalances();
   let portfolioValue = 0;
+  
   Object.keys(inv).forEach(id => {
     const c = APP.cards.find(x => x.id === id);
-    if (c) portfolioValue += (c.current_price || c.original_price || 0) * (inv[id] || 0);
+    if (c) {
+      const qty = inv[id]?.quantity !== undefined ? inv[id].quantity : (inv[id] || 0);
+      portfolioValue += (c.current_price || c.original_price || 0) * qty;
+    }
   });
+  
   const pEl = document.getElementById('statPortfolio');
   if (pEl) pEl.textContent = formatPrice(portfolioValue);
   const cEl = document.getElementById('statCoins');
@@ -554,9 +568,13 @@ function renderPortfolioChart() {
   const labels = [];
   const data = [];
   let baseValue = 0;
+  
   cardIds.forEach(id => {
     const c = APP.cards.find(x => x.id === id);
-    if (c) baseValue += (c.current_price || c.original_price || 0) * inv[id];
+    if (c) {
+      const qty = inv[id]?.quantity !== undefined ? inv[id].quantity : (inv[id] || 0);
+      baseValue += (c.current_price || c.original_price || 0) * qty;
+    }
   });
 
   for (let i = days - 1; i >= 0; i--) {
@@ -670,7 +688,7 @@ function renderDashInventory() {
   const countEl = document.getElementById('dashInventoryCount');
   if (!grid) return;
   const inv = getInventory();
-  const ids = Object.keys(inv).filter(id => inv[id] > 0);
+  const ids = Object.keys(inv).filter(id => (inv[id].quantity > 0 || inv[id] > 0));
   if (countEl) countEl.textContent = ids.length + ' cards';
   if (!ids.length) {
     grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><span class="material-icons">inbox</span><p>No cards yet</p></div>';
@@ -699,7 +717,8 @@ function renderCardTile(card, inv) {
   else if (card.status === 'cold') badge = '<span class="badge-top cold">COLD</span>';
   else if (card.status === 'newly') badge = '<span class="badge-top newly">NEW</span>';
 
-  const owned = inv?.[card.id] ? '<div style="position:absolute;top:8px;right:8px;background:#22C55E;color:#fff;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">OWNED</div>' : '';
+  const qty = inv?.[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv?.[card.id] || 0);
+  const owned = qty > 0 ? '<div style="position:absolute;top:8px;right:8px;background:#22C55E;color:#fff;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">OWNED</div>' : '';
 
   const selected = APP.bulkSelected.includes(card.id);
   const selBorder = selected ? 'box-shadow:0 0 0 3px #22C55E;' : '';
@@ -722,7 +741,8 @@ function renderCardTile(card, inv) {
 function startLongPress(cardId) {
   cancelLongPress();
   const inv = getInventory();
-  if (!inv[cardId] || inv[cardId] <= 0) return;
+  const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+  if (qty <= 0) return;
   APP.longPressTimer = setTimeout(() => {
     toggleBulkSelect(cardId);
     playSound('click');
@@ -748,11 +768,8 @@ function cardTileClick(cardId) {
 
 function toggleBulkSelect(cardId) {
   const idx = APP.bulkSelected.indexOf(cardId);
-  if (idx === -1) {
-    APP.bulkSelected.push(cardId);
-  } else {
-    APP.bulkSelected.splice(idx, 1);
-  }
+  if (idx === -1) APP.bulkSelected.push(cardId);
+  else APP.bulkSelected.splice(idx, 1);
   updateBulkSellBar();
   renderInventoryFull();
   renderDashInventory();
@@ -775,7 +792,7 @@ function openCardModal(cardId) {
   playSound('click');
 
   const inv = getInventory();
-  const owned = inv[cardId] || 0;
+  const owned = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
   const isVip = !!card.is_vip;
   const isBonus = !!card.is_bonus;
   const statusForFee = card.status === 'newly' ? 'newly' : (card.status || 'neutral');
@@ -843,13 +860,20 @@ async function buyFromMarketplace(cardId) {
         s.depositBalance -= price;
         s.coins -= coinFee;
         s.inventory = s.inventory || {};
-        s.inventory[cardId] = (s.inventory[cardId] || 0) + 1;
+        
+        if (!s.inventory[cardId]) {
+          s.inventory[cardId] = { quantity: 1, marketplace_quantity: 1, trade_quantity: 0 };
+        } else {
+          s.inventory[cardId].quantity = (s.inventory[cardId].quantity || 0) + 1;
+          s.inventory[cardId].marketplace_quantity = (s.inventory[cardId].marketplace_quantity || 0) + 1;
+        }
+        
         s.ownedEver = s.ownedEver || {};
         s.ownedEver[cardId] = true;
         s.totalTrades = (s.totalTrades || 0) + 1;
         if (s.checklist) s.checklist.buy = true;
       });
-      Demo.log({ type: 'buy', cardId, cardName: card.name, amount: price, coins: coinFee });
+      Demo.log({ type: 'marketplace_buy', cardId, cardName: card.name, amount: price, coins: coinFee });
       Demo.notify('Card Purchased', 'You bought ' + card.name + ' for ' + formatPrice(price), 'trade');
       showToast('Purchased!', 'success');
       playSound('reward');
@@ -880,7 +904,8 @@ function openSellModal(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
   if (!card) return;
   const inv = getInventory();
-  if (!inv[cardId] || inv[cardId] <= 0) { showToast('You do not own this card', 'error'); return; }
+  const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+  if (qty <= 0) { showToast('You do not own this card', 'error'); return; }
   if (card.is_bonus || card.is_disappearing) { showToast('This card cannot be sold', 'error'); return; }
 
   playSound('click');
@@ -933,15 +958,23 @@ async function confirmSell(cardId) {
   }
 
   const inv = getInventory();
-  if (!inv[cardId] || inv[cardId] <= 0) { showToast('You do not own this card', 'error'); return; }
+  const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+  if (qty <= 0) { showToast('You do not own this card', 'error'); return; }
 
   showLoading('Creating listing...');
   try {
     if (isDemo()) {
       Demo.update(s => {
         s.coins -= CONFIG.LISTING_COIN_FEE;
-        s.inventory[cardId] = (s.inventory[cardId] || 0) - 1;
-        if (s.inventory[cardId] <= 0) delete s.inventory[cardId];
+        
+        if (s.inventory[cardId].quantity !== undefined) {
+          s.inventory[cardId].quantity -= 1;
+          if (s.inventory[cardId].quantity <= 0) delete s.inventory[cardId];
+        } else {
+          s.inventory[cardId] -= 1;
+          if (s.inventory[cardId] <= 0) delete s.inventory[cardId];
+        }
+
         s.listings = s.listings || [];
         const acc = Demo.account();
         s.listings.push({
@@ -949,21 +982,17 @@ async function confirmSell(cardId) {
           sellerId: acc.id,
           cardId: cardId,
           price: price,
-          units: 1,
-          remaining: 1,
+          units: 2, 
+          remaining: 2, 
           createdAt: Date.now(),
           status: 'active',
-          coinFeePaid: CONFIG.LISTING_COIN_FEE
+          coinFeePaid: CONFIG.LISTING_COIN_FEE,
+          current_effective_price: price
         });
-        s.totalTrades = (s.totalTrades || 0) + 0;
       });
       Demo.log({ type: 'listing_create', cardId, cardName: card.name, amount: price });
-      showToast('Listed for ' + formatPrice(price), 'success');
-      playSound('reward');
-      closeSellModal();
-      loadInventory();
-      loadTrade();
-      loadDashboard();
+      showToast('Listed successfully', 'success'); playSound('reward'); closeSellModal();
+      loadInventory(); loadTrade(); loadDashboard();
     } else {
       const { data, error } = await getSupabase().functions.invoke('create-listing', { body: { cardId, price } });
       if (error || data?.error) throw new Error(data?.error || error.message);
@@ -1041,18 +1070,25 @@ async function confirmBulkSell() {
         s.listings = s.listings || [];
         const acc = Demo.account();
         for (const cardId of APP.bulkSelected) {
-          s.inventory[cardId] = (s.inventory[cardId] || 0) - 1;
-          if (s.inventory[cardId] <= 0) delete s.inventory[cardId];
+          if (s.inventory[cardId].quantity !== undefined) {
+            s.inventory[cardId].quantity -= 1;
+            if (s.inventory[cardId].quantity <= 0) delete s.inventory[cardId];
+          } else {
+            s.inventory[cardId] -= 1;
+            if (s.inventory[cardId] <= 0) delete s.inventory[cardId];
+          }
+
           s.listings.push({
             id: generateId('l'),
             sellerId: acc.id,
             cardId,
             price: prices[cardId],
-            units: 1,
-            remaining: 1,
+            units: 2, 
+            remaining: 2, 
             createdAt: Date.now(),
             status: 'active',
-            coinFeePaid: CONFIG.LISTING_COIN_FEE
+            coinFeePaid: CONFIG.LISTING_COIN_FEE,
+            current_effective_price: prices[cardId]
           });
         }
       });
@@ -1065,11 +1101,8 @@ async function confirmBulkSell() {
     APP.bulkSelected = [];
     updateBulkSellBar();
     closeBulkSellModal();
-    loadInventory();
-    loadTrade();
-    loadDashboard();
-    showToast('All listed!', 'success');
-    playSound('reward');
+    loadInventory(); loadTrade(); loadDashboard();
+    showToast('All listed!', 'success'); playSound('reward');
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -1135,7 +1168,8 @@ async function renderTradeBuyListings() {
       const status = card.is_vip ? 'vip' : (card.status || 'neutral');
       if (status !== APP.tradeFilter) return;
     }
-    const owned = inv[card.id] > 0;
+    const qty = inv[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv[card.id] || 0);
+    const owned = qty > 0;
     html += `
       <div class="listing-item">
         <div class="info">
@@ -1187,22 +1221,26 @@ async function buyFromTrade(listingId) {
         listing.remaining -= 1;
         if (listing.remaining <= 0) listing.status = 'sold_out';
         s.inventory = s.inventory || {};
-        s.inventory[listing.cardId] = (s.inventory[listing.cardId] || 0) + 1;
+        
+        if (!s.inventory[listing.cardId]) {
+          s.inventory[listing.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1 };
+        } else {
+          s.inventory[listing.cardId].quantity = (s.inventory[listing.cardId].quantity || 0) + 1;
+          s.inventory[listing.cardId].trade_quantity = (s.inventory[listing.cardId].trade_quantity || 0) + 1;
+        }
+
         s.ownedEver = s.ownedEver || {};
         s.ownedEver[listing.cardId] = true;
         s.totalTrades = (s.totalTrades || 0) + 1;
       });
-      loadTrade();
-      loadDashboard();
+      loadTrade(); loadDashboard();
     } else {
       const { data, error } = await getSupabase().functions.invoke('buy-from-trade', { body: { listingId } });
       if (error || data?.error) throw new Error(data?.error || error.message);
       await refreshLiveProfile();
-      loadTrade();
-      loadDashboard();
+      loadTrade(); loadDashboard();
     }
-    showToast('Purchased!', 'success');
-    playSound('reward');
+    showToast('Purchased!', 'success'); playSound('reward');
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -1220,16 +1258,19 @@ async function cancelListing(listingId) {
         if (!l) return;
         l.status = 'cancelled';
         s.inventory = s.inventory || {};
-        s.inventory[l.cardId] = (s.inventory[l.cardId] || 0) + 1;
+        
+        if (!s.inventory[l.cardId]) {
+          s.inventory[l.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1 };
+        } else {
+          s.inventory[l.cardId].quantity = (s.inventory[l.cardId].quantity || 0) + 1;
+        }
       });
-      loadTrade();
-      loadInventory();
+      loadTrade(); loadInventory();
     } else {
       const { data, error } = await getSupabase().functions.invoke('cancel-listing', { body: { listingId } });
       if (error || data?.error) throw new Error(data?.error || error.message);
       await refreshLiveProfile();
-      loadTrade();
-      loadInventory();
+      loadTrade(); loadInventory();
     }
     showToast('Cancelled', 'success');
   } catch (err) {
@@ -1251,7 +1292,7 @@ function renderInventoryFull() {
   const grid = document.getElementById('inventoryFullGrid');
   if (!grid) return;
   const inv = getInventory();
-  let ids = Object.keys(inv).filter(id => inv[id] > 0);
+  let ids = Object.keys(inv).filter(id => (inv[id].quantity > 0 || inv[id] > 0));
   if (APP.inventorySearch) {
     ids = ids.filter(id => {
       const c = APP.cards.find(x => x.id === id);
@@ -1347,13 +1388,20 @@ function renderMiningUI() {
 
 function tapMiningSlot() {
   const inv = getInventory();
-  const avail = Object.keys(inv).filter(id => inv[id] > 0);
-  if (!avail.length) { showToast('No cards in inventory', 'info'); return; }
+  // Enforce marketplace_quantity rule
+  const avail = Object.keys(inv).filter(id => {
+    if (inv[id] && typeof inv[id] === 'object') {
+      return (inv[id].marketplace_quantity || 0) > 0;
+    }
+    return (inv[id] || 0) > 0;
+  });
+  
+  if (!avail.length) { showToast('You need Marketplace cards to mine. Trade cards cannot be mined.', 'info'); return; }
   
   if (isDemo()) {
     const s = Demo.state(); s.miningSlots = s.miningSlots || [];
     const nextId = avail.find(id => !s.miningSlots.find(c => c.id === id));
-    if (!nextId) { showToast('All cards added', 'info'); return; }
+    if (!nextId) { showToast('All available cards added', 'info'); return; }
     const picked = APP.cards.find(c => c.id === nextId); if (picked) s.miningSlots.push(picked);
     renderMiningUI();
   } else {
@@ -1414,8 +1462,14 @@ async function startMining() {
 
   Demo.update(st => {
     st.miningSlots.forEach(c => {
-      st.inventory[c.id] = (st.inventory[c.id] || 0) - 1;
-      if (st.inventory[c.id] <= 0) delete st.inventory[c.id];
+      if (st.inventory[c.id].quantity !== undefined) {
+        st.inventory[c.id].quantity -= 1;
+        st.inventory[c.id].marketplace_quantity = Math.max(0, (st.inventory[c.id].marketplace_quantity || 0) - 1);
+        if (st.inventory[c.id].quantity <= 0) delete st.inventory[c.id];
+      } else {
+        st.inventory[c.id] -= 1;
+        if (st.inventory[c.id] <= 0) delete st.inventory[c.id];
+      }
     });
     st.earningsBalance += reward;
     st.lifetimeEarned += reward;
@@ -1464,7 +1518,9 @@ async function loadDailyCombo() {
     if (card) {
       document.getElementById('comboCardArea').innerHTML = `<div style="display:flex;gap:12px;align-items:center;"><img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:80px;height:106px;border-radius:10px;object-fit:cover;" /><div><div style="font-weight:700;font-size:15px;">${escapeHtml(card.name)}</div><div style="font-size:12px;color:#666;">${formatPrice(card.current_price || card.original_price || 0)}</div></div></div>`;
       
-      const inv = getInventory(); const owned = inv[combo.assigned_card_id] > 0;
+      const inv = getInventory(); 
+      const qty = inv[combo.assigned_card_id]?.quantity !== undefined ? inv[combo.assigned_card_id].quantity : (inv[combo.assigned_card_id] || 0);
+      const owned = qty > 0;
       const action = document.getElementById('comboActionArea');
       
       if (combo.completed) {
@@ -1500,14 +1556,39 @@ async function loadDailyCombo() {
   const combo = s.dailyCombo || {};
   if (!combo.assignedCardId || combo.date !== today) {
     const inv = getInventory();
-    const eligible = APP.cards.filter(c => !inv[c.id] && c.is_active);
+    const eligible = APP.cards.filter(c => {
+      const qty = inv[c.id]?.quantity !== undefined ? inv[c.id].quantity : (inv[c.id] || 0);
+      return qty === 0 && c.is_active;
+    });
+    
     if (!eligible.length) {
       const el = document.getElementById('comboCardArea');
       if (el) el.innerHTML = '<div class="empty-state"><p>No eligible cards today</p></div>';
       return;
     }
     const pick = eligible[Math.floor(Math.random() * eligible.length)];
-    Demo.update(st => { st.dailyCombo = { assignedCardId: pick.id, date: today, completed: false }; });
+    
+    Demo.update(st => { 
+      st.dailyCombo = { assignedCardId: pick.id, date: today, completed: false }; 
+      
+      // 🚨 SMART FIX: Auto-list the combo card in the Trade tab so the user can buy it!
+      const existingListing = (st.listings || []).find(l => l.cardId === pick.id && l.status === 'active');
+      if (!existingListing) {
+        st.listings = st.listings || [];
+        st.listings.push({
+          id: generateId('l'),
+          sellerId: 'bot_combo',
+          sellerName: 'Combo Bot',
+          cardId: pick.id,
+          price: Math.round(pick.current_price * 1.05), // Slight markup
+          units: 2,
+          remaining: 2,
+          createdAt: Date.now(),
+          status: 'active',
+          current_effective_price: Math.round(pick.current_price * 1.05)
+        });
+      }
+    });
     loadDailyCombo();
     return;
   }
@@ -1532,7 +1613,8 @@ async function loadDailyCombo() {
   }
 
   const inv = getInventory();
-  const owned = inv[combo.assignedCardId] > 0;
+  const qty = inv[combo.assignedCardId]?.quantity !== undefined ? inv[combo.assignedCardId].quantity : (inv[combo.assignedCardId] || 0);
+  const owned = qty > 0;
   const action = document.getElementById('comboActionArea');
   if (!action) return;
   if (combo.completed) {
@@ -1553,8 +1635,7 @@ async function completeDailyCombo(comboId) {
       
       showToast(`Combo complete! Earned ${data.total_dp} DP`, 'success');
       playSound('reward');
-      await refreshLiveProfile();
-      loadDailyCombo();
+      await refreshLiveProfile(); loadDailyCombo();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -1579,7 +1660,7 @@ async function completeDailyCombo(comboId) {
   Demo.notify('Daily Combo', 'You earned 12 DP', 'reward');
   showToast('+12 DP', 'success');
   playSound('reward');
-  loadDailyCombo();
+  loadDailyCombo(); updateBalanceUI();
 }
 
 // ============================================================
@@ -1666,9 +1747,7 @@ async function submitDeposit() {
     Demo.notify('Deposit', 'Demo deposit of ' + formatPrice(amount) + ' completed', 'info');
     showToast('Demo deposit successful (no real money)', 'success');
     playSound('reward');
-    closeDepositModal();
-    loadWallet();
-    loadDashboard();
+    closeDepositModal(); loadWallet(); loadDashboard();
   } else {
     showLoading('Initializing payment...');
     try {
@@ -1676,8 +1755,7 @@ async function submitDeposit() {
       if (error || data?.error) throw new Error(data?.error || error.message);
       window.location.href = data.url; 
     } catch (err) {
-      showToast(err.message, 'error');
-      hideLoading();
+      showToast(err.message, 'error'); hideLoading();
     }
   }
 }
@@ -1737,9 +1815,7 @@ async function submitWithdraw() {
     Demo.notify('Withdrawal', 'Request for ' + formatPrice(amt) + ' submitted', 'info');
     showToast('Withdrawal requested (demo)', 'success');
     playSound('reward');
-    closeWithdrawModal();
-    loadWallet();
-    loadDashboard();
+    closeWithdrawModal(); loadWallet(); loadDashboard();
   } else {
     showLoading('Processing withdrawal...');
     try {
@@ -1750,9 +1826,7 @@ async function submitWithdraw() {
       showToast('Withdrawal requested successfully', 'success');
       playSound('reward');
       await refreshLiveProfile();
-      closeWithdrawModal();
-      loadWallet();
-      loadDashboard();
+      closeWithdrawModal(); loadWallet(); loadDashboard();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -1789,8 +1863,7 @@ async function saveBankDetails() {
   if (isDemo()) {
     Demo.update(s => { s.bankDetails = { bank, accountName: name, accountNumber: num }; });
     showToast('Bank saved', 'success');
-    closeBankModal();
-    renderBankDetails();
+    closeBankModal(); renderBankDetails();
   } else {
     showLoading('Saving...');
     try {
@@ -1798,8 +1871,7 @@ async function saveBankDetails() {
       if (error) throw error;
       await refreshLiveProfile();
       showToast('Bank saved', 'success');
-      closeBankModal();
-      renderBankDetails();
+      closeBankModal(); renderBankDetails();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -2531,7 +2603,11 @@ async function refreshLiveProfile() {
     if (data.inventory) {
       data.inventory.forEach(i => {
         if (i.quantity > 0) {
-          formattedInv[i.card_id] = i.quantity;
+          formattedInv[i.card_id] = {
+            quantity: i.quantity,
+            marketplace_quantity: i.marketplace_quantity || 0,
+            trade_quantity: i.trade_quantity || 0
+          };
         }
       });
     }
@@ -2637,7 +2713,7 @@ async function boot() {
     };
     sendWelcomeNotification();
     
-    // 🚨 START THE DEMO SIMULATION ENGINE
+    // 🚨 START THE SMART DEMO SIMULATION ENGINE
     startDemoBotEngine(); 
     
   } else {
