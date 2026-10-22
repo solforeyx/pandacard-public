@@ -228,6 +228,12 @@ function installPWA() {
   }
 }
 
+// 🚨 FIXED: Added the missing function to prevent the ReferenceError
+function closeInstallModal() {
+  const modal = document.getElementById('installModal');
+  if (modal) modal.classList.remove('open');
+}
+
 function hideInstallUI() {
   const headerBtn = document.getElementById('pwaInstallBtn');
   if (headerBtn) headerBtn.style.display = 'none';
@@ -2501,7 +2507,7 @@ async function refreshLiveProfile() {
 }
 
 // ============================================================
-// LOAD CARDS (UPDATED FOR DISAPPEARING SHUFFLE)
+// LOAD CARDS
 // ============================================================
 async function loadCards() {
   try {
