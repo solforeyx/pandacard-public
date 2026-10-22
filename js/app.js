@@ -2501,7 +2501,7 @@ async function refreshLiveProfile() {
 }
 
 // ============================================================
-// LOAD CARDS
+// LOAD CARDS (UPDATED FOR DISAPPEARING SHUFFLE)
 // ============================================================
 async function loadCards() {
   try {
@@ -2509,7 +2509,20 @@ async function loadCards() {
     if (!sb) { APP.cards = []; return; }
     const { data, error } = await sb.from('cards').select('*').eq('is_active', true).order('name');
     if (error) throw error;
-    APP.cards = data || [];
+    
+    const now = new Date().toISOString();
+    
+    // Filter out disappearing cards that are not currently active
+    APP.cards = (data || []).filter(c => {
+      if (c.is_disappearing) {
+        // Only show if appears_at is in the past AND expires_at is in the future
+        return c.disappear_appears_at && 
+               c.disappear_appears_at <= now && 
+               c.disappear_expires_at > now;
+      }
+      return true; // Show all non-disappearing cards
+    });
+
   } catch (e) {
     console.error('loadCards failed', e);
     APP.cards = [];
