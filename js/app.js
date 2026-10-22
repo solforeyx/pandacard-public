@@ -76,18 +76,20 @@ const Demo = {
 };
 
 // ============================================================
-// 🤖 SMART DEMO SIMULATION ENGINE
+// 🤖 SMART DEMO SIMULATION ENGINE (FIXED TIMERS)
 // ============================================================
 const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George", "Hannah"];
 
 function startDemoBotEngine() {
   if (APP.botInterval) clearInterval(APP.botInterval);
   
+  // Run every 1 minute to check timers
   APP.botInterval = setInterval(() => {
     if (!isDemo() || APP.cards.length === 0) return;
     const s = Demo.state();
     if (!s) return;
 
+    // 1. Seed the Trade Market continuously (Bots listing)
     const activeListings = (s.listings || []).filter(l => l.status === 'active');
     if (activeListings.length < 4 && Math.random() < 0.5) {
       const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
@@ -114,13 +116,14 @@ function startDemoBotEngine() {
       }
     }
 
+    // 2. Sequential buying of USER's listings (FIXED TO 60 SECONDS)
     if (s.lastBotPurchaseAt) {
       const elapsed = Date.now() - s.lastBotPurchaseAt;
       
-      if (elapsed >= 10 * 60 * 1000) {
+      if (elapsed >= 60 * 1000) { // 60 seconds
         const userListings = (s.listings || [])
           .filter(l => l.sellerId === s.userId && l.status === 'active')
-          .sort((a, b) => a.createdAt - b.createdAt);
+          .sort((a, b) => a.createdAt - b.createdAt); // Oldest first
 
         if (userListings.length > 0) {
           const listingToBuy = userListings[0];
@@ -138,6 +141,8 @@ function startDemoBotEngine() {
             st.earningsBalance += listingToBuy.price; 
             st.lifetimeEarned += listingToBuy.price;
             st.totalTrades = (st.totalTrades || 0) + 1;
+            
+            // Reset timer for the NEXT purchase
             st.lastBotPurchaseAt = Date.now(); 
           });
 
@@ -148,11 +153,12 @@ function startDemoBotEngine() {
           if (document.getElementById('section-dashboard').classList.contains('active')) loadDashboard();
           if (document.getElementById('section-wallet').classList.contains('active')) loadWallet();
         } else {
+          // If no listings, reset timer to avoid immediate purchase when they list next
           Demo.update(st => { st.lastBotPurchaseAt = Date.now(); });
         }
       }
     }
-  }, 60000);
+  }, 60000); // 1 minute tick
 }
 
 // ============================================================
@@ -567,7 +573,18 @@ function renderPortfolioChart() {
 
   const inv = getInventory();
   const cardIds = Object.keys(inv);
-  const days = APP.portfolioDays;
+  
+  // FIX: Calculate actual account age to limit fake graph data
+  let createdAt = Date.now();
+  if (isDemo()) {
+    createdAt = Demo.account()?.createdAt || Date.now();
+  } else {
+    createdAt = new Date(APP.profile?.created_at || Date.now()).getTime();
+  }
+  
+  const accountAgeDays = Math.max(1, Math.floor((Date.now() - createdAt) / 86400000));
+  const days = Math.min(APP.portfolioDays, accountAgeDays);
+
   const labels = [];
   const data = [];
   let baseValue = 0;
@@ -581,7 +598,8 @@ function renderPortfolioChart() {
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-    const wobble = cardIds.length === 0 ? 0 : (1 + Math.sin(i / 3) * 0.05);
+    // If account is 1 day old, it will just draw a straight line
+    const wobble = (cardIds.length === 0 || days === 1) ? 1 : (1 + Math.sin(i / 3) * 0.05);
     data.push(Math.round(baseValue * wobble));
   }
 
@@ -713,15 +731,17 @@ function renderCardTile(card, inv) {
     : 'frame-neutral';
 
   let badge = '';
-  if (card.is_disappearing) badge = '<span class="badge-top disappearing">DISAPPEARING</span>';
-  else if (card.is_bonus) badge = '<span class="badge-top bonus">BONUS</span>';
-  else if (card.is_vip) badge = '<span class="badge-top vip">VIP</span>';
-  else if (card.status === 'hot') badge = '<span class="badge-top hot">HOT</span>';
-  else if (card.status === 'cold') badge = '<span class="badge-top cold">COLD</span>';
-  else if (card.status === 'newly') badge = '<span class="badge-top newly">NEW</span>';
+  if (card.is_disappearing) badge = '<span class="badge-top disappearing" style="position:absolute; top:8px; left:8px; background:#9B59B6; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">DISAPPEARING</span>';
+  else if (card.is_bonus) badge = '<span class="badge-top bonus" style="position:absolute; top:8px; left:8px; background:#FF6B35; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">BONUS</span>';
+  else if (card.is_vip) badge = '<span class="badge-top vip" style="position:absolute; top:8px; left:8px; background:#FFD700; color:#1A1A2E; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">VIP</span>';
+  else if (card.status === 'hot') badge = '<span class="badge-top hot" style="position:absolute; top:8px; left:8px; background:#FF4444; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">HOT</span>';
+  else if (card.status === 'cold') badge = '<span class="badge-top cold" style="position:absolute; top:8px; left:8px; background:#4A90D9; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">COLD</span>';
+  else if (card.status === 'newly') badge = '<span class="badge-top newly" style="position:absolute; top:8px; left:8px; background:#22C55E; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">NEW</span>';
 
   const qty = inv?.[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv?.[card.id] || 0);
-  const owned = qty > 0 ? '<div style="position:absolute;top:8px;right:8px;background:#22C55E;color:#fff;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">OWNED</div>' : '';
+  
+  // FIX: Adjusted positioning so it doesn't overlap the top-left badge
+  const owned = qty > 0 ? '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>' : '';
 
   const selected = APP.bulkSelected.includes(card.id);
   const selBorder = selected ? 'box-shadow:0 0 0 3px #22C55E;' : '';
@@ -734,19 +754,19 @@ function renderCardTile(card, inv) {
     if (diff > 0) {
       const hours = Math.floor(diff / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
-      timerHtml = `<div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.7);color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;">${hours}h ${mins}m</div>`;
+      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.7); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2;">${hours}h ${mins}m</div>`;
     }
   }
 
   return `
-    <div class="card-item ${frameClass}" style="${selBorder}" data-card-id="${card.id}" onclick="cardTileClick('${card.id}')" onmousedown="startLongPress('${card.id}')" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()" ontouchstart="startLongPress('${card.id}')" ontouchend="cancelLongPress()">
-      <div class="card-image">
-        <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="${escapeHtml(card.name)}" loading="lazy" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+    <div class="card-item ${frameClass}" style="${selBorder} position:relative;" data-card-id="${card.id}" onclick="cardTileClick('${card.id}')" onmousedown="startLongPress('${card.id}')" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()" ontouchstart="startLongPress('${card.id}')" ontouchend="cancelLongPress()">
+      <div class="card-image" style="width:100%; height:140px; border-radius:12px; overflow:hidden; position:relative;">
+        <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="${escapeHtml(card.name)}" loading="lazy" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
         ${badge}${owned}${timerHtml}
-        ${selected ? '<div style="position:absolute;bottom:8px;right:8px;background:#22C55E;color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">✓</div>' : ''}
+        ${selected ? '<div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:#22C55E; color:#fff; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; z-index:3;">✓</div>' : ''}
       </div>
-      <div class="card-name">${escapeHtml(card.name)}</div>
-      <div class="card-price">${formatPrice(card.current_price || card.original_price || 0)}</div>
+      <div class="card-name" style="margin-top:8px; font-weight:700; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(card.name)}</div>
+      <div class="card-price" style="color:#FFD700; font-weight:800; font-size:13px;">${formatPrice(card.current_price || card.original_price || 0)}</div>
     </div>`;
 }
 
@@ -799,7 +819,7 @@ function updateBulkSellBar() {
 }
 
 // ============================================================
-// CARD MODAL & DEMAND
+// CARD MODAL & DEMAND (FULLY FIXED)
 // ============================================================
 function openCardModal(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -810,8 +830,11 @@ function openCardModal(cardId) {
   const owned = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
   const isVip = !!card.is_vip;
   const isBonus = !!card.is_bonus;
+  const isDisappearing = !!card.is_disappearing;
   const statusForFee = card.status === 'newly' ? 'newly' : (card.status || 'neutral');
-  const coinFee = coinFeeForBuy(statusForFee, isVip);
+  
+  // FIX: Bonus cards have 0 coin fee
+  const coinFee = isBonus ? 0 : coinFeeForBuy(statusForFee, isVip);
 
   const originalPrice = card.original_price || card.current_price || 0;
   const currentPrice = card.current_price || originalPrice;
@@ -820,6 +843,11 @@ function openCardModal(cardId) {
   let actions = '';
   if (isBonus) {
     actions = `<button class="btn-primary" onclick="closeCardModal();navigateTo('referral')">Earn via Referrals</button>`;
+  } else if (isDisappearing) {
+    // FIX: Disappearing cards can ONLY be bought. No selling, no demanding.
+    actions = `
+      <button class="btn-buy" onclick="closeCardModal();buyFromMarketplace('${cardId}')">Buy — ${formatPrice(currentPrice)} + ${coinFee} PC</button>
+    `;
   } else if (owned > 0) {
     actions = `
       <button class="btn-sell" onclick="closeCardModal();openSellModal('${cardId}')">Sell This Card</button>
@@ -828,28 +856,45 @@ function openCardModal(cardId) {
   } else {
     const hasBought = isDemo() && Demo.state()?.ownedEver?.[cardId];
     if (hasBought) {
-      actions = `<button class="btn-buy" onclick="closeCardModal();showToast('Look in Trade to buy again','info')">Find in Trade</button>`;
+      // FIX: Navigates to Trade and pre-fills the search bar with the card name
+      actions = `<button class="btn-buy" onclick="closeCardModal();navigateTo('trade'); setTimeout(()=>{ document.getElementById('tradeSearchInput').value = '${card.name.replace(/'/g, "\\'")}'; filterTradeListings(); }, 300)">Find in Trade</button>`;
     } else {
+      // FIX: Demand button REMOVED from normal Marketplace buy.
       actions = `
         <button class="btn-buy" onclick="closeCardModal();buyFromMarketplace('${cardId}')">Buy — ${formatPrice(currentPrice)} + ${coinFee} PC</button>
-        <button class="btn-demand" onclick="demandCard('${cardId}')">Demand (Request this card)</button>
       `;
     }
   }
 
+  // FIX: Hide prices and details for Bonus Cards
+  let detailRows = '';
+  if (isBonus) {
+    detailRows = `
+      <div class="detail-row"><span class="label">Referrals Required</span><span class="value gold">${card.bonus_referral_threshold || 10} Referrals</span></div>
+    `;
+  } else {
+    detailRows = `
+      <div class="detail-row"><span class="label">Original Price</span><span class="value">${formatPrice(originalPrice)}</span></div>
+      <div class="detail-row"><span class="label">Current Price</span><span class="value gold">${formatPrice(currentPrice)}</span></div>
+      <div class="detail-row"><span class="label">Floor</span><span class="value">${formatPrice(originalPrice)}</span></div>
+      <div class="detail-row"><span class="label">Ceiling</span><span class="value">${formatPrice(ceiling)}</span></div>
+      <div class="detail-row"><span class="label">Status</span><span class="value">${(card.status || 'neutral').toUpperCase()}</span></div>
+      <div class="detail-row"><span class="label">Coin Fee</span><span class="value gold">${coinFee} PC</span></div>
+      ${owned > 0 ? `<div class="detail-row"><span class="label">You Own</span><span class="value">${owned}</span></div>` : ''}
+    `;
+  }
+
   document.getElementById('cardModalBody').innerHTML = `
-    <div class="modal-card-image"><img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" /></div>
-    <div class="modal-card-title">${escapeHtml(card.name)}</div>
-    <div class="modal-card-id">ID: ${escapeHtml(card.card_code || card.id)}</div>
-    <div class="detail-row"><span class="label">Original Price</span><span class="value">${formatPrice(originalPrice)}</span></div>
-    <div class="detail-row"><span class="label">Current Price</span><span class="value gold">${formatPrice(currentPrice)}</span></div>
-    <div class="detail-row"><span class="label">Floor</span><span class="value">${formatPrice(originalPrice)}</span></div>
-    <div class="detail-row"><span class="label">Ceiling</span><span class="value">${formatPrice(ceiling)}</span></div>
-    <div class="detail-row"><span class="label">Status</span><span class="value">${(card.status || 'neutral').toUpperCase()}</span></div>
-    <div class="detail-row"><span class="label">Coin Fee</span><span class="value gold">${coinFee} PC</span></div>
-    ${owned > 0 ? `<div class="detail-row"><span class="label">You Own</span><span class="value">${owned}</span></div>` : ''}
+    <div class="modal-card-image" style="width:100%; height:200px; border-radius:16px; overflow:hidden; margin-bottom:16px;">
+      <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+    </div>
+    <div class="modal-card-title" style="font-size:20px; font-weight:900; margin-bottom:4px;">${escapeHtml(card.name)}</div>
+    <div class="modal-card-id" style="font-size:11px; color:#999; margin-bottom:16px;">ID: ${escapeHtml(card.card_code || card.id)}</div>
+    
+    ${detailRows}
+    
     ${card.description ? `<div style="font-size:13px;color:#666;padding:12px 0;line-height:1.5;">${escapeHtml(card.description)}</div>` : ''}
-    <div class="modal-actions">${actions}</div>
+    <div class="modal-actions" style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">${actions}</div>
   `;
   document.getElementById('cardModal').classList.add('open');
 }
@@ -889,7 +934,7 @@ async function buyFromMarketplace(cardId) {
   const b = getBalances();
   const price = card.current_price || card.original_price || 0;
   const statusForFee = card.status === 'newly' ? 'newly' : (card.status || 'neutral');
-  const coinFee = coinFeeForBuy(statusForFee, !!card.is_vip);
+  const coinFee = card.is_bonus ? 0 : coinFeeForBuy(statusForFee, !!card.is_vip);
 
   if (b.deposit < price) { showToast('Need ' + formatPrice(price) + ' in deposit balance', 'error'); playSound('error'); return; }
   if (b.coins < coinFee) { showToast('Need ' + coinFee + ' PC. You have ' + b.coins + '.', 'error'); playSound('error'); return; }
@@ -1158,7 +1203,7 @@ async function confirmBulkSell() {
 }
 
 // ============================================================
-// TRADE
+// TRADE (FIXED IMAGES & SEARCH)
 // ============================================================
 function loadTrade() {
   const b = getBalances();
@@ -1233,12 +1278,14 @@ async function renderTradeBuyListings() {
     
     const canCancel = isMine && l.remaining === l.units;
 
+    // FIX: ADDED IMAGE TAG HERE
     html += `
-      <div class="listing-item" style="${borderStyle}">
-        <div class="info">
-          <div class="name" style="display:flex;align-items:center;color:${isMine ? '#FF4444' : '#1A1A2E'};">${escapeHtml(card.name)} ${badge}</div>
-          <div class="price">${formatPrice(l.current_effective_price || l.price)}</div>
-          <div class="units">${l.remaining}/${l.units} units</div>
+      <div class="listing-item" style="${borderStyle} display:flex; align-items:center; gap:12px; padding:12px;">
+        <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:50px; height:65px; border-radius:8px; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+        <div class="info" style="flex:1;">
+          <div class="name" style="display:flex;align-items:center;color:${isMine ? '#FF4444' : '#1A1A2E'}; font-weight:700;">${escapeHtml(card.name)} ${badge}</div>
+          <div class="price" style="color:#FFD700; font-weight:800;">${formatPrice(l.current_effective_price || l.price)}</div>
+          <div class="units" style="font-size:11px; color:#999;">${l.remaining}/${l.units} units</div>
         </div>
         ${isMine 
           ? (canCancel 
@@ -1268,12 +1315,21 @@ async function renderTradeSellListings() {
     el.innerHTML = '<div class="empty-state"><span class="material-icons">sell</span><p>No active listings</p><button class="btn-action" style="max-width:200px;margin:16px auto 0;" onclick="navigateTo(\'inventory\')">Go to Inventory</button></div>';
     return;
   }
+  
+  // FIX: ADDED IMAGE TAG HERE
   el.innerHTML = mine.map(l => {
     const card = APP.cards.find(c => c.id === (l.cardId || l.card_id)) || { name: 'Card' };
     const canCancel = l.remaining === l.units;
-    return `<div class="listing-item"><div class="info"><div class="name">${escapeHtml(card.name)}</div><div class="price">${formatPrice(l.price)}</div><div class="units">${l.remaining}/${l.units}</div></div>
-      ${canCancel ? `<button class="buy-btn sell" onclick="cancelListing('${l.id}')">Cancel</button>` : `<button class="buy-btn" disabled style="background:#ccc;color:#666;font-size:11px;">1 Sold</button>`}
-    </div>`;
+    return `
+      <div class="listing-item" style="display:flex; align-items:center; gap:12px; padding:12px;">
+        <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:50px; height:65px; border-radius:8px; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+        <div class="info" style="flex:1;">
+          <div class="name" style="font-weight:700;">${escapeHtml(card.name)}</div>
+          <div class="price" style="color:#FFD700; font-weight:800;">${formatPrice(l.price)}</div>
+          <div class="units" style="font-size:11px; color:#999;">${l.remaining}/${l.units} units</div>
+        </div>
+        ${canCancel ? `<button class="buy-btn sell" onclick="cancelListing('${l.id}')">Cancel</button>` : `<button class="buy-btn" disabled style="background:#ccc;color:#666;font-size:11px;">1 Sold</button>`}
+      </div>`;
   }).join('');
 }
 
@@ -1363,7 +1419,7 @@ async function cancelListing(listingId) {
 }
 
 // ============================================================
-// INVENTORY
+// INVENTORY (FIXED LAYOUT)
 // ============================================================
 function loadInventory() {
   renderInventoryFull();
@@ -1390,8 +1446,9 @@ function renderInventoryFull() {
   const cnt = document.getElementById('inventoryCount');
   if (cnt) cnt.textContent = ids.length + ' cards';
   
+  // FIX: Proper Grid layout with gap to prevent overlap
   grid.innerHTML = `
-    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
       ${ids.map(id => {
         const c = APP.cards.find(x => x.id === id);
         return c ? renderCardTile(c, inv) : '';
@@ -1406,7 +1463,7 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING
+// MINING (FIXED BUG)
 // ============================================================
 async function loadMining() {
   if (!isDemo()) {
@@ -1433,6 +1490,7 @@ async function loadMining() {
   const s = Demo.state();
   const today = new Date().toDateString();
   
+  // 12-Hour Session Logic
   const currentHour = new Date().getHours();
   const currentSession = currentHour < 12 ? 'AM' : 'PM';
   const sessionKey = `${today}-${currentSession}`;
@@ -1452,22 +1510,26 @@ async function loadMining() {
     });
   }
 
+  // Pick 3 cards strictly
   if (!s.dailyMiningCards || s.dailyMiningCards.length !== 3) {
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
+    // FIX: Was filtering FOR disappearing cards, now it filters for NORMAL cards
     let pool = APP.cards.filter(c => {
       const price = c.current_price || c.original_price || 0;
-      return !c.is_bonus && c.is_disappearing && c.is_active && price >= cfg.minCardPrice && price <= cfg.maxCardPrice;
+      return !c.is_bonus && !c.is_disappearing && c.is_active && price >= cfg.minCardPrice && price <= cfg.maxCardPrice;
     });
     
+    // Fallback if pool is too small
     if (pool.length < 3) {
-        pool = APP.cards.filter(c => !c.is_bonus && c.is_active);
+        pool = APP.cards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
     }
 
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
     let selected = shuffled.slice(0, 3).map(c => c.id);
     
+    // Pad if still less than 3
     while (selected.length < 3 && APP.cards.length > 0) {
         selected.push(APP.cards[0].id);
     }
@@ -2223,7 +2285,6 @@ async function saveChangePassword() {
 function openDeleteAccountModal() { document.getElementById('deleteAccountModal').classList.add('open'); }
 function closeDeleteAccountModal() { document.getElementById('deleteAccountModal').classList.remove('open'); }
 
-// ✅ FIXED: Live mode now actually deletes account (30-day countdown via backend)
 async function confirmDeleteAccount() {
   const v = document.getElementById('deleteConfirmInput').value.trim();
   if (v !== 'DELETE') { showToast('Type DELETE to confirm', 'error'); return; }
@@ -2807,6 +2868,7 @@ async function loadCards() {
     APP.cards = (data || []).filter(c => {
       if (c.is_disappearing) {
         if (isDemo()) {
+           // FIX: In demo mode, limit disappearing cards to 2 max
            const app = c.disappear_appears_at;
            const exp = c.disappear_expires_at;
            if (!app || !exp) return true;
@@ -2819,6 +2881,7 @@ async function loadCards() {
       return true; 
     });
 
+    // Percentage visibility:
     {
       const userSeed = APP.user?.id || 'demo_seed';
       const visiblePct = isDemo() ? 50 : 80;
@@ -2829,6 +2892,13 @@ async function loadCards() {
         for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
         return Math.abs(hash) % 100 < visiblePct;
       });
+    }
+
+    // FIX: Limit disappearing cards in demo to prevent showing all of them at once
+    if (isDemo()) {
+      const disappearing = APP.cards.filter(c => c.is_disappearing).slice(0, 2);
+      const rest = APP.cards.filter(c => !c.is_disappearing);
+      APP.cards = [...disappearing, ...rest];
     }
 
   } catch (e) {
@@ -2906,7 +2976,6 @@ async function boot() {
     const profile = await refreshLiveProfile();
     APP.profile = profile;
     if (profile) {
-      // ✅ FIXED: Redirect to deletion-pending page if account is scheduled for deletion
       if (profile.deletion_status === 'pending_deletion') {
         window.location.href = 'deletion-pending.html';
         return;
