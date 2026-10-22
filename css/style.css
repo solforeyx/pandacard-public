@@ -55,7 +55,8 @@ body.dark-mode .stat-item .stat-value,
 body.dark-mode .card-item .card-name,
 body.dark-mode .section-header h2,
 body.dark-mode .modal-sheet h3,
-body.dark-mode .checklist-card .checklist-title {
+body.dark-mode .checklist-card .checklist-title,
+body.dark-mode .marketplace-section-title {
   color: #FFFFFF !important;
 }
 
@@ -564,7 +565,6 @@ body.demo-mode .top-bar { top: 26px; }
 #marketplaceGrid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
 
 .marketplace-section-title {
@@ -573,12 +573,13 @@ body.demo-mode .top-bar { top: 26px; }
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
-  margin-top: 10px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  color: #1A1A2E;
 }
 
-/* This is the new horizontal scrolling row for each section */
-.card-scroll-row {
+/* The new horizontal scroll row */
+.card-scroll-row, #inventoryFullGrid, #dashInventoryGrid {
   display: grid;
   grid-auto-flow: column; 
   grid-template-rows: repeat(2, 1fr); 
@@ -586,12 +587,14 @@ body.demo-mode .top-bar { top: 26px; }
   gap: 12px;
   overflow-x: auto; 
   overflow-y: hidden;
-  padding-bottom: 8px;
+  padding-bottom: 12px;
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.card-scroll-row::-webkit-scrollbar {
+.card-scroll-row::-webkit-scrollbar,
+#inventoryFullGrid::-webkit-scrollbar,
+#dashInventoryGrid::-webkit-scrollbar {
   display: none;
 }
 
