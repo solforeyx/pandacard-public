@@ -31,6 +31,7 @@ const APP = {
   livePublished: false,
   ratesLoaded: false,
   bulkSelected: [],
+  bulkBuySelected: [], // NEW: For bulk buying
   longPressTimer: null,
   botInterval: null
 };
@@ -76,14 +77,14 @@ const Demo = {
 };
 
 // ============================================================
-// 🤖 SMART DEMO SIMULATION ENGINE (FIXED TIMERS)
+// 🤖 SMART DEMO SIMULATION ENGINE (FIXED: 30s TIMERS)
 // ============================================================
 const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George", "Hannah"];
 
 function startDemoBotEngine() {
   if (APP.botInterval) clearInterval(APP.botInterval);
   
-  // Run every 1 minute to check timers
+  // Run every 15 seconds to check timers for faster simulation
   APP.botInterval = setInterval(() => {
     if (!isDemo() || APP.cards.length === 0) return;
     const s = Demo.state();
@@ -91,7 +92,7 @@ function startDemoBotEngine() {
 
     // 1. Seed the Trade Market continuously (Bots listing)
     const activeListings = (s.listings || []).filter(l => l.status === 'active');
-    if (activeListings.length < 4 && Math.random() < 0.5) {
+    if (activeListings.length < 4 && Math.random() < 0.3) {
       const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
       if (randomCard && !activeListings.find(l => l.cardId === randomCard.id)) {
         const randomPrice = Math.round(randomCard.current_price * 1.1); 
@@ -116,11 +117,11 @@ function startDemoBotEngine() {
       }
     }
 
-    // 2. Sequential buying of USER's listings (FIXED TO 60 SECONDS)
+    // 2. Sequential buying of USER's listings (FIXED: 30 SECONDS PER UNIT)
     if (s.lastBotPurchaseAt) {
       const elapsed = Date.now() - s.lastBotPurchaseAt;
       
-      if (elapsed >= 60 * 1000) { // 60 seconds
+      if (elapsed >= 30 * 1000) { // 30 seconds
         const userListings = (s.listings || [])
           .filter(l => l.sellerId === s.userId && l.status === 'active')
           .sort((a, b) => a.createdAt - b.createdAt); // Oldest first
@@ -158,7 +159,7 @@ function startDemoBotEngine() {
         }
       }
     }
-  }, 60000); // 1 minute tick
+  }, 15000); // Check every 15 seconds
 }
 
 // ============================================================
@@ -574,7 +575,7 @@ function renderPortfolioChart() {
   const inv = getInventory();
   const cardIds = Object.keys(inv);
   
-  // FIX: Calculate actual account age to limit fake graph data
+  // Calculate actual account age to limit fake graph data
   let createdAt = Date.now();
   if (isDemo()) {
     createdAt = Demo.account()?.createdAt || Date.now();
@@ -598,8 +599,9 @@ function renderPortfolioChart() {
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-    // If account is 1 day old, it will just draw a straight line
-    const wobble = (cardIds.length === 0 || days === 1) ? 1 : (1 + Math.sin(i / 3) * 0.05);
+    
+    // Graph simulation: sine wave for visual effect
+    const wobble = (cardIds.length === 0 || days === 1) ? 1 : (1 + Math.sin(i / 2) * 0.08);
     data.push(Math.round(baseValue * wobble));
   }
 
@@ -694,14 +696,16 @@ function renderMarketplaceGrid() {
   sections.forEach(s => {
     if (grouped[s.key].length) {
       html += `<div class="marketplace-section-title" style="color:${s.color};"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
-      html += `<div class="card-scroll-row">`;
-      grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv); });
+      html += `<div class="card-scroll-row" style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px;">`;
+      grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv, true); });
       html += `</div>`;
     }
   });
   grid.innerHTML = html;
   const cnt = document.getElementById('marketplaceCount');
   if (cnt) cnt.textContent = total + ' cards';
+
+  updateBulkBuyBar();
 }
 
 function renderDashInventory() {
@@ -715,13 +719,19 @@ function renderDashInventory() {
     grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><span class="material-icons">inbox</span><p>No cards yet</p></div>';
     return;
   }
-  grid.innerHTML = `<div class="card-scroll-row">` + ids.slice(0, 10).map(id => {
-    const c = APP.cards.find(x => x.id === id);
-    return c ? renderCardTile(c, inv) : '';
-  }).join('') + `</div>`;
+  
+  // FIXED: 3-column grid instead of scroll row
+  grid.innerHTML = `
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+      ${ids.slice(0, 9).map(id => {
+        const c = APP.cards.find(x => x.id === id);
+        return c ? renderCardTile(c, inv, false) : '';
+      }).join('')}
+    </div>
+  `;
 }
 
-function renderCardTile(card, inv) {
+function renderCardTile(card, inv, isMarketplace = false) {
   const frameClass = card.is_vip ? 'frame-vip'
     : card.is_disappearing ? 'frame-disappearing'
     : card.is_bonus ? 'frame-bonus'
@@ -739,50 +749,79 @@ function renderCardTile(card, inv) {
   else if (card.status === 'newly') badge = '<span class="badge-top newly" style="position:absolute; top:8px; left:8px; background:#22C55E; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">NEW</span>';
 
   const qty = inv?.[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv?.[card.id] || 0);
-  
-  // FIX: Adjusted positioning so it doesn't overlap the top-left badge
   const owned = qty > 0 ? '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>' : '';
 
-  const selected = APP.bulkSelected.includes(card.id);
+  const selected = APP.bulkBuySelected.includes(card.id) || APP.bulkSelected.includes(card.id);
   const selBorder = selected ? 'box-shadow:0 0 0 3px #22C55E;' : '';
 
+  // FIXED TIMERS: Newly & Disappearing
   let timerHtml = '';
   if (card.is_disappearing && card.disappear_expires_at) {
     const expires = new Date(card.disappear_expires_at).getTime();
-    const now = Date.now();
-    const diff = expires - now;
+    const diff = expires - Date.now();
     if (diff > 0) {
       const hours = Math.floor(diff / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
-      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.7); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2;">${hours}h ${mins}m</div>`;
+      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.8); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2;">⏳ ${hours}h ${mins}m</div>`;
+    }
+  } else if (card.status === 'newly' && card.created_at) {
+    const created = new Date(card.created_at).getTime();
+    const expires = created + (24 * 60 * 60 * 1000); // 24 hours newly
+    const diff = expires - Date.now();
+    if (diff > 0) {
+      const hours = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.8); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2;">⏳ ${hours}h ${mins}m</div>`;
     }
   }
 
+  // FIXED BONUS PRICE
+  let priceHtml = '';
+  if (card.is_bonus) {
+    priceHtml = `<div class="card-price" style="color:#FF6B35; font-weight:800; font-size:13px;">${card.bonus_referral_threshold || 10} Refs</div>`;
+  } else {
+    priceHtml = `<div class="card-price" style="color:#FFD700; font-weight:800; font-size:13px;">${formatPrice(card.current_price || card.original_price || 0)}</div>`;
+  }
+
   return `
-    <div class="card-item ${frameClass}" style="${selBorder} position:relative;" data-card-id="${card.id}" onclick="cardTileClick('${card.id}')" onmousedown="startLongPress('${card.id}')" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()" ontouchstart="startLongPress('${card.id}')" ontouchend="cancelLongPress()">
-      <div class="card-image" style="width:100%; height:140px; border-radius:12px; overflow:hidden; position:relative;">
+    <div class="card-item ${frameClass}" style="${selBorder} position:relative; width:100%;" data-card-id="${card.id}" onclick="cardTileClick('${card.id}', ${isMarketplace})" onmousedown="startLongPress('${card.id}', ${isMarketplace})" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()" ontouchstart="startLongPress('${card.id}', ${isMarketplace})" ontouchend="cancelLongPress()">
+      <div class="card-image" style="width:100%; height:120px; border-radius:12px; overflow:hidden; position:relative;">
         <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="${escapeHtml(card.name)}" loading="lazy" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
         ${badge}${owned}${timerHtml}
-        ${selected ? '<div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:#22C55E; color:#fff; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; z-index:3;">✓</div>' : ''}
+        ${selected ? '<div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:#22C55E; color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; z-index:3;">✓</div>' : ''}
       </div>
-      <div class="card-name" style="margin-top:8px; font-weight:700; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(card.name)}</div>
-      <div class="card-price" style="color:#FFD700; font-weight:800; font-size:13px;">${formatPrice(card.current_price || card.original_price || 0)}</div>
+      <div class="card-name" style="margin-top:8px; font-weight:700; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(card.name)}</div>
+      ${priceHtml}
     </div>`;
 }
 
 // ============================================================
-// LONG-PRESS BULK SELECT
+// LONG-PRESS & BULK BUY
 // ============================================================
-function startLongPress(cardId) {
+function startLongPress(cardId, isMarketplace) {
   cancelLongPress();
-  const inv = getInventory();
-  const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
-  if (qty <= 0) return;
-  APP.longPressTimer = setTimeout(() => {
-    toggleBulkSelect(cardId);
-    playSound('click');
-    if (navigator.vibrate) navigator.vibrate(30);
-  }, 600);
+  
+  if (isMarketplace) {
+    if (APP.bulkBuySelected.length === 0) {
+      const inv = getInventory();
+      const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+      if (qty > 0) return; // Already owned
+    }
+    APP.longPressTimer = setTimeout(() => {
+      toggleBulkBuySelect(cardId);
+      playSound('click');
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 600);
+  } else {
+    const inv = getInventory();
+    const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+    if (qty <= 0) return;
+    APP.longPressTimer = setTimeout(() => {
+      toggleBulkSelect(cardId);
+      playSound('click');
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 600);
+  }
 }
 
 function cancelLongPress() {
@@ -792,15 +831,131 @@ function cancelLongPress() {
   }
 }
 
-function cardTileClick(cardId) {
+function cardTileClick(cardId, isMarketplace) {
   cancelLongPress();
-  if (APP.bulkSelected.length > 0) {
+  if (isMarketplace && APP.bulkBuySelected.length > 0) {
+    toggleBulkBuySelect(cardId);
+    return;
+  }
+  if (!isMarketplace && APP.bulkSelected.length > 0) {
     toggleBulkSelect(cardId);
     return;
   }
   openCardModal(cardId);
 }
 
+function toggleBulkBuySelect(cardId) {
+  const idx = APP.bulkBuySelected.indexOf(cardId);
+  if (idx === -1) APP.bulkBuySelected.push(cardId);
+  else APP.bulkBuySelected.splice(idx, 1);
+  updateBulkBuyBar();
+  renderMarketplaceGrid();
+}
+
+function updateBulkBuyBar() {
+  let bar = document.getElementById('bulkBuyBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'bulkBuyBar';
+    bar.style.cssText = 'display:none; position:fixed; bottom:70px; left:50%; transform:translateX(-50%); background:#1A1A2E; color:#fff; padding:12px 20px; border-radius:30px; z-index:1000; box-shadow:0 4px 12px rgba(0,0,0,0.3); width:90%; max-width:400px; text-align:center;';
+    bar.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:700; font-size:14px;"><span id="bulkBuyCount">0</span> selected</span>
+        <button onclick="confirmBulkBuy()" style="background:#FFD700; color:#1A1A2E; border:none; padding:8px 16px; border-radius:20px; font-weight:800; font-size:13px; cursor:pointer;">Buy All</button>
+      </div>
+    `;
+    document.body.appendChild(bar);
+  }
+  bar.style.display = APP.bulkBuySelected.length > 0 ? 'block' : 'none';
+  const cnt = document.getElementById('bulkBuyCount');
+  if (cnt) cnt.textContent = APP.bulkBuySelected.length;
+}
+
+async function confirmBulkBuy() {
+  if (!APP.bulkBuySelected.length) return;
+  const b = getBalances();
+  let totalPrice = 0;
+  let totalCoins = 0;
+  
+  const cardsToBuy = [];
+  for (const id of APP.bulkBuySelected) {
+    const card = APP.cards.find(c => c.id === id);
+    if (!card) continue;
+    const price = card.current_price || card.original_price || 0;
+    const coinFee = card.is_bonus ? 0 : coinFeeForBuy(card.status, card.is_vip);
+    totalPrice += price;
+    totalCoins += coinFee;
+    cardsToBuy.push({ card, price, coinFee });
+  }
+
+  if (b.deposit < totalPrice) { showToast('Need ' + formatPrice(totalPrice) + ' in deposit balance', 'error'); return; }
+  if (b.coins < totalCoins) { showToast('Need ' + totalCoins + ' PC. You have ' + b.coins + '.', 'error'); return; }
+
+  if (!confirm(`Buy ${cardsToBuy.length} cards for ${formatPrice(totalPrice)} + ${totalCoins} PC?`)) return;
+
+  showLoading('Purchasing...');
+  try {
+    if (isDemo()) {
+      Demo.update(s => {
+        s.depositBalance -= totalPrice;
+        s.coins -= totalCoins;
+        s.inventory = s.inventory || {};
+        
+        for (const item of cardsToBuy) {
+          if (!s.inventory[item.card.id]) {
+            s.inventory[item.card.id] = { quantity: 1, marketplace_quantity: 1, trade_quantity: 0 };
+          } else {
+            s.inventory[item.card.id].quantity += 1;
+            s.inventory[item.card.id].marketplace_quantity += 1;
+          }
+          s.ownedEver = s.ownedEver || {};
+          s.ownedEver[item.card.id] = true;
+        }
+        s.totalTrades = (s.totalTrades || 0) + cardsToBuy.length;
+        if (s.checklist) s.checklist.buy = true;
+      });
+      
+      Demo.log({ type: 'marketplace_buy', amount: totalPrice, metadata: { count: cardsToBuy.length, coins: totalCoins } });
+      Demo.notify('Cards Purchased', `You bought ${cardsToBuy.length} cards for ${formatPrice(totalPrice)}`, 'trade');
+      showToast('Purchased!', 'success');
+      playSound('reward');
+      APP.bulkBuySelected = [];
+      updateBulkBuyBar();
+      loadDashboard();
+      return;
+    }
+    
+    // Live Mode Bulk Buy (Loop)
+    const sb = getSupabase();
+    if (!sb) throw new Error('Supabase unavailable');
+    
+    for (const item of cardsToBuy) {
+      const { error } = await sb.functions.invoke('marketplace-buy', { body: { cardId: item.card.id } });
+      if (error) {
+        console.error("Failed to buy", item.card.name, error);
+        showToast(`Failed to buy ${item.card.name}`, 'error');
+      }
+    }
+    
+    showToast('Bulk purchase completed!', 'success');
+    playSound('reward');
+    APP.bulkBuySelected = [];
+    updateBulkBuyBar();
+    await refreshLiveProfile();
+    loadDashboard();
+
+  } catch (err) {
+    showToast(err.message || 'Purchase failed', 'error');
+    playSound('error');
+  } finally {
+    hideLoading();
+  }
+}
+
+
+// ============================================================
+// INVENTORY BULK SELL (Keep existing)
+// ============================================================
 function toggleBulkSelect(cardId) {
   const idx = APP.bulkSelected.indexOf(cardId);
   if (idx === -1) APP.bulkSelected.push(cardId);
@@ -819,7 +974,7 @@ function updateBulkSellBar() {
 }
 
 // ============================================================
-// CARD MODAL & DEMAND (FULLY FIXED)
+// CARD MODAL (Strict Bonus / Owned / Disappearing logic)
 // ============================================================
 function openCardModal(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -831,10 +986,8 @@ function openCardModal(cardId) {
   const isVip = !!card.is_vip;
   const isBonus = !!card.is_bonus;
   const isDisappearing = !!card.is_disappearing;
-  const statusForFee = card.status === 'newly' ? 'newly' : (card.status || 'neutral');
   
-  // FIX: Bonus cards have 0 coin fee
-  const coinFee = isBonus ? 0 : coinFeeForBuy(statusForFee, isVip);
+  const coinFee = isBonus ? 0 : coinFeeForBuy(card.status || 'neutral', isVip);
 
   const originalPrice = card.original_price || card.current_price || 0;
   const currentPrice = card.current_price || originalPrice;
@@ -844,10 +997,11 @@ function openCardModal(cardId) {
   if (isBonus) {
     actions = `<button class="btn-primary" onclick="closeCardModal();navigateTo('referral')">Earn via Referrals</button>`;
   } else if (isDisappearing) {
-    // FIX: Disappearing cards can ONLY be bought. No selling, no demanding.
-    actions = `
-      <button class="btn-buy" onclick="closeCardModal();buyFromMarketplace('${cardId}')">Buy — ${formatPrice(currentPrice)} + ${coinFee} PC</button>
-    `;
+    if (owned > 0) {
+      actions = `<div style="text-align:center; padding:12px; background:#f0f0f5; border-radius:12px; font-weight:700; color:#999;">Already Owned</div>`;
+    } else {
+      actions = `<button class="btn-buy" onclick="closeCardModal();buyFromMarketplace('${cardId}')">Buy — ${formatPrice(currentPrice)} + ${coinFee} PC</button>`;
+    }
   } else if (owned > 0) {
     actions = `
       <button class="btn-sell" onclick="closeCardModal();openSellModal('${cardId}')">Sell This Card</button>
@@ -856,17 +1010,13 @@ function openCardModal(cardId) {
   } else {
     const hasBought = isDemo() && Demo.state()?.ownedEver?.[cardId];
     if (hasBought) {
-      // FIX: Navigates to Trade and pre-fills the search bar with the card name
       actions = `<button class="btn-buy" onclick="closeCardModal();navigateTo('trade'); setTimeout(()=>{ document.getElementById('tradeSearchInput').value = '${card.name.replace(/'/g, "\\'")}'; filterTradeListings(); }, 300)">Find in Trade</button>`;
     } else {
-      // FIX: Demand button REMOVED from normal Marketplace buy.
-      actions = `
-        <button class="btn-buy" onclick="closeCardModal();buyFromMarketplace('${cardId}')">Buy — ${formatPrice(currentPrice)} + ${coinFee} PC</button>
-      `;
+      actions = `<button class="btn-buy" onclick="closeCardModal();buyFromMarketplace('${cardId}')">Buy — ${formatPrice(currentPrice)} + ${coinFee} PC</button>`;
     }
   }
 
-  // FIX: Hide prices and details for Bonus Cards
+  // Detail rows
   let detailRows = '';
   if (isBonus) {
     detailRows = `
@@ -926,7 +1076,7 @@ async function demandCard(cardId) {
 }
 
 // ============================================================
-// BUY FROM MARKETPLACE
+// BUY FROM MARKETPLACE (Single)
 // ============================================================
 async function buyFromMarketplace(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -1097,7 +1247,7 @@ async function confirmSell(cardId) {
 }
 
 // ============================================================
-// BULK SELL
+// BULK SELL (Inventory Only)
 // ============================================================
 function openBulkSellModal() {
   if (!APP.bulkSelected.length) return;
@@ -1203,7 +1353,7 @@ async function confirmBulkSell() {
 }
 
 // ============================================================
-// TRADE (FIXED IMAGES & SEARCH)
+// TRADE (Buy/Sell)
 // ============================================================
 function loadTrade() {
   const b = getBalances();
@@ -1278,7 +1428,6 @@ async function renderTradeBuyListings() {
     
     const canCancel = isMine && l.remaining === l.units;
 
-    // FIX: ADDED IMAGE TAG HERE
     html += `
       <div class="listing-item" style="${borderStyle} display:flex; align-items:center; gap:12px; padding:12px;">
         <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:50px; height:65px; border-radius:8px; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
@@ -1316,7 +1465,6 @@ async function renderTradeSellListings() {
     return;
   }
   
-  // FIX: ADDED IMAGE TAG HERE
   el.innerHTML = mine.map(l => {
     const card = APP.cards.find(c => c.id === (l.cardId || l.card_id)) || { name: 'Card' };
     const canCancel = l.remaining === l.units;
@@ -1397,9 +1545,14 @@ async function cancelListing(listingId) {
         l.status = 'cancelled';
         s.inventory = s.inventory || {};
         
+        // FIXED: Apply ceiling penalty on cancel
         if (!s.inventory[l.cardId]) {
-          s.inventory[l.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1 };
+          s.inventory[l.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1, ceiling_price: l.original_price_at_listing * 9 };
         } else {
+          const currentCeiling = s.inventory[l.cardId].ceiling_price || (l.original_price_at_listing * 10);
+          let newCeiling = currentCeiling * 0.9;
+          if (newCeiling < l.original_price_at_listing) newCeiling = l.original_price_at_listing;
+          s.inventory[l.cardId].ceiling_price = newCeiling;
           s.inventory[l.cardId].quantity = (s.inventory[l.cardId].quantity || 0) + 1;
         }
       });
@@ -1419,7 +1572,7 @@ async function cancelListing(listingId) {
 }
 
 // ============================================================
-// INVENTORY (FIXED LAYOUT)
+// INVENTORY (Layout fixed)
 // ============================================================
 function loadInventory() {
   renderInventoryFull();
@@ -1446,12 +1599,12 @@ function renderInventoryFull() {
   const cnt = document.getElementById('inventoryCount');
   if (cnt) cnt.textContent = ids.length + ' cards';
   
-  // FIX: Proper Grid layout with gap to prevent overlap
+  // FIXED: 2-column layout for main inventory
   grid.innerHTML = `
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
       ${ids.map(id => {
         const c = APP.cards.find(x => x.id === id);
-        return c ? renderCardTile(c, inv) : '';
+        return c ? renderCardTile(c, inv, false) : '';
       }).join('')}
     </div>
   `;
@@ -1463,7 +1616,7 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING (FIXED BUG)
+// MINING (Fixed Logic)
 // ============================================================
 async function loadMining() {
   if (!isDemo()) {
@@ -1515,7 +1668,7 @@ async function loadMining() {
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
-    // FIX: Was filtering FOR disappearing cards, now it filters for NORMAL cards
+    // FIXED: Ensure mining only picks normal cards and checks current_price
     let pool = APP.cards.filter(c => {
       const price = c.current_price || c.original_price || 0;
       return !c.is_bonus && !c.is_disappearing && c.is_active && price >= cfg.minCardPrice && price <= cfg.maxCardPrice;
@@ -2461,6 +2614,18 @@ function loadReferral() {
     if (cntEl) cntEl.textContent = String(s.totalReferrals || 0);
     const coinEl = document.getElementById('referralCoinsEarned');
     if (coinEl) coinEl.textContent = String(s.referralCoins || 0);
+
+    // FIXED: Inject Simulate Button
+    const container = document.getElementById('section-referral').querySelector('.content-area');
+    if (container && !document.getElementById('simulateRefBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'simulateRefBtn';
+      btn.className = 'btn-primary';
+      btn.style.cssText = 'width:100%; margin-top:20px; background:#9B59B6;';
+      btn.innerHTML = 'Simulate 3 Referrals (Demo Only)';
+      btn.onclick = simulateReferral;
+      container.appendChild(btn);
+    }
   } else {
     if (!APP.profile) return;
     const stage = APP.profile.stage || getStage();
@@ -2868,7 +3033,7 @@ async function loadCards() {
     APP.cards = (data || []).filter(c => {
       if (c.is_disappearing) {
         if (isDemo()) {
-           // FIX: In demo mode, limit disappearing cards to 2 max
+           // In demo mode, limit disappearing cards to 2 max
            const app = c.disappear_appears_at;
            const exp = c.disappear_expires_at;
            if (!app || !exp) return true;
@@ -2894,7 +3059,7 @@ async function loadCards() {
       });
     }
 
-    // FIX: Limit disappearing cards in demo to prevent showing all of them at once
+    // Limit disappearing cards in demo to exactly 2
     if (isDemo()) {
       const disappearing = APP.cards.filter(c => c.is_disappearing).slice(0, 2);
       const rest = APP.cards.filter(c => !c.is_disappearing);
@@ -3073,3 +3238,5 @@ window.togglePushNotifications = togglePushNotifications;
 window.installPWA = installPWA;
 window.closeInstallModal = closeInstallModal;
 window.simulateReferral = simulateReferral;
+window.confirmBulkBuy = confirmBulkBuy;
+window.toggleBulkBuySelect = toggleBulkBuySelect;
