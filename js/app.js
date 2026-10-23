@@ -1,5 +1,5 @@
 // ============================================================
-// PANDA CARD — MAIN APP (COMPLETE — LIVE + DEMO + PUSH)
+// PANDA CARD — MAIN APP (FINAL FIXED VERSION)
 // ============================================================
 
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
@@ -30,9 +30,6 @@ const APP = {
   paymentMethod: null,
   livePublished: false,
   ratesLoaded: false,
-  bulkSelected: [],
-  bulkBuySelected: [], // NEW: For bulk buying
-  longPressTimer: null,
   botInterval: null
 };
 
@@ -84,13 +81,11 @@ const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George"
 function startDemoBotEngine() {
   if (APP.botInterval) clearInterval(APP.botInterval);
   
-  // Run every 15 seconds to check timers for faster simulation
   APP.botInterval = setInterval(() => {
     if (!isDemo() || APP.cards.length === 0) return;
     const s = Demo.state();
     if (!s) return;
 
-    // 1. Seed the Trade Market continuously (Bots listing)
     const activeListings = (s.listings || []).filter(l => l.status === 'active');
     if (activeListings.length < 4 && Math.random() < 0.3) {
       const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
@@ -117,14 +112,13 @@ function startDemoBotEngine() {
       }
     }
 
-    // 2. Sequential buying of USER's listings (FIXED: 30 SECONDS PER UNIT)
     if (s.lastBotPurchaseAt) {
       const elapsed = Date.now() - s.lastBotPurchaseAt;
       
-      if (elapsed >= 30 * 1000) { // 30 seconds
+      if (elapsed >= 30 * 1000) { 
         const userListings = (s.listings || [])
           .filter(l => l.sellerId === s.userId && l.status === 'active')
-          .sort((a, b) => a.createdAt - b.createdAt); // Oldest first
+          .sort((a, b) => a.createdAt - b.createdAt); 
 
         if (userListings.length > 0) {
           const listingToBuy = userListings[0];
@@ -142,8 +136,6 @@ function startDemoBotEngine() {
             st.earningsBalance += listingToBuy.price; 
             st.lifetimeEarned += listingToBuy.price;
             st.totalTrades = (st.totalTrades || 0) + 1;
-            
-            // Reset timer for the NEXT purchase
             st.lastBotPurchaseAt = Date.now(); 
           });
 
@@ -154,12 +146,11 @@ function startDemoBotEngine() {
           if (document.getElementById('section-dashboard').classList.contains('active')) loadDashboard();
           if (document.getElementById('section-wallet').classList.contains('active')) loadWallet();
         } else {
-          // If no listings, reset timer to avoid immediate purchase when they list next
           Demo.update(st => { st.lastBotPurchaseAt = Date.now(); });
         }
       }
     }
-  }, 15000); // Check every 15 seconds
+  }, 15000); 
 }
 
 // ============================================================
@@ -195,7 +186,8 @@ function getBalances() {
       coins: s?.coins || 0,
       dp: s?.diamondPoints || 0,
       lifetimeEarned: s?.lifetimeEarned || 0,
-      lifetimeWithdrawn: s?.lifetimeWithdrawn || 0
+      lifetimeWithdrawn: s?.lifetimeWithdrawn || 0,
+      totalReferrals: s?.totalReferrals || 0
     };
   }
   const p = APP.profile;
@@ -205,7 +197,8 @@ function getBalances() {
     coins: p?.coins || 0,
     dp: p?.diamond_points || 0,
     lifetimeEarned: p?.lifetime_earned || 0,
-    lifetimeWithdrawn: p?.lifetime_withdrawn || 0
+    lifetimeWithdrawn: p?.lifetime_withdrawn || 0,
+    totalReferrals: p?.total_referrals || 0
   };
 }
 
@@ -575,7 +568,6 @@ function renderPortfolioChart() {
   const inv = getInventory();
   const cardIds = Object.keys(inv);
   
-  // Calculate actual account age to limit fake graph data
   let createdAt = Date.now();
   if (isDemo()) {
     createdAt = Demo.account()?.createdAt || Date.now();
@@ -600,7 +592,6 @@ function renderPortfolioChart() {
     const d = new Date(); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
     
-    // Graph simulation: sine wave for visual effect
     const wobble = (cardIds.length === 0 || days === 1) ? 1 : (1 + Math.sin(i / 2) * 0.08);
     data.push(Math.round(baseValue * wobble));
   }
@@ -664,15 +655,22 @@ function renderMarketplaceGrid() {
   if (!grid) return;
   if (!APP.cards.length) {
     grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><span class="material-icons">inventory_2</span><p>No cards available</p></div>';
-    const cnt = document.getElementById('marketplaceCount');
-    if (cnt) cnt.textContent = '0 cards';
     return;
   }
 
   const inv = getInventory();
   const grouped = { disappearing: [], bonus: [], vip: [], hot: [], cold: [], neutral: [], newly: [] };
+  
+  // Strictly limit to 1 Disappearing card
+  let disappearingSeen = 0;
+
   APP.cards.forEach(c => {
-    if (c.is_disappearing && c.is_active) grouped.disappearing.push(c);
+    if (c.is_disappearing && c.is_active) {
+      if (disappearingSeen < 1) {
+        grouped.disappearing.push(c);
+        disappearingSeen++;
+      }
+    }
     else if (c.is_bonus) grouped.bonus.push(c);
     else if (c.is_vip) grouped.vip.push(c);
     else if (c.status === 'hot') grouped.hot.push(c);
@@ -692,20 +690,15 @@ function renderMarketplaceGrid() {
   ];
 
   let html = '';
-  let total = 0;
   sections.forEach(s => {
     if (grouped[s.key].length) {
       html += `<div class="marketplace-section-title" style="color:${s.color};"><span class="material-icons" style="font-size:18px;">${s.icon}</span> ${s.label}</div>`;
-      html += `<div class="card-scroll-row" style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px;">`;
-      grouped[s.key].forEach(card => { total++; html += renderCardTile(card, inv, true); });
+      html += `<div class="card-scroll-row">`;
+      grouped[s.key].forEach(card => { html += renderCardTile(card, inv); });
       html += `</div>`;
     }
   });
   grid.innerHTML = html;
-  const cnt = document.getElementById('marketplaceCount');
-  if (cnt) cnt.textContent = total + ' cards';
-
-  updateBulkBuyBar();
 }
 
 function renderDashInventory() {
@@ -720,18 +713,17 @@ function renderDashInventory() {
     return;
   }
   
-  // FIXED: 3-column grid instead of scroll row
   grid.innerHTML = `
     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
       ${ids.slice(0, 9).map(id => {
         const c = APP.cards.find(x => x.id === id);
-        return c ? renderCardTile(c, inv, false) : '';
+        return c ? renderCardTile(c, inv) : '';
       }).join('')}
     </div>
   `;
 }
 
-function renderCardTile(card, inv, isMarketplace = false) {
+function renderCardTile(card, inv) {
   const frameClass = card.is_vip ? 'frame-vip'
     : card.is_disappearing ? 'frame-disappearing'
     : card.is_bonus ? 'frame-bonus'
@@ -741,20 +733,16 @@ function renderCardTile(card, inv, isMarketplace = false) {
     : 'frame-neutral';
 
   let badge = '';
-  if (card.is_disappearing) badge = '<span class="badge-top disappearing" style="position:absolute; top:8px; left:8px; background:#9B59B6; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">DISAPPEARING</span>';
-  else if (card.is_bonus) badge = '<span class="badge-top bonus" style="position:absolute; top:8px; left:8px; background:#FF6B35; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">BONUS</span>';
-  else if (card.is_vip) badge = '<span class="badge-top vip" style="position:absolute; top:8px; left:8px; background:#FFD700; color:#1A1A2E; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">VIP</span>';
-  else if (card.status === 'hot') badge = '<span class="badge-top hot" style="position:absolute; top:8px; left:8px; background:#FF4444; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">HOT</span>';
-  else if (card.status === 'cold') badge = '<span class="badge-top cold" style="position:absolute; top:8px; left:8px; background:#4A90D9; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">COLD</span>';
-  else if (card.status === 'newly') badge = '<span class="badge-top newly" style="position:absolute; top:8px; left:8px; background:#22C55E; color:white; padding:2px 6px; border-radius:4px; font-size:8px; font-weight:800; z-index:2;">NEW</span>';
+  if (card.is_disappearing) badge = '<span class="badge-top disappearing">DISAPPEARING</span>';
+  else if (card.is_bonus) badge = '<span class="badge-top bonus">BONUS</span>';
+  else if (card.is_vip) badge = '<span class="badge-top vip">VIP</span>';
+  else if (card.status === 'hot') badge = '<span class="badge-top hot">HOT</span>';
+  else if (card.status === 'cold') badge = '<span class="badge-top cold">COLD</span>';
+  else if (card.status === 'newly') badge = '<span class="badge-top newly">NEW</span>';
 
   const qty = inv?.[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv?.[card.id] || 0);
   const owned = qty > 0 ? '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>' : '';
 
-  const selected = APP.bulkBuySelected.includes(card.id) || APP.bulkSelected.includes(card.id);
-  const selBorder = selected ? 'box-shadow:0 0 0 3px #22C55E;' : '';
-
-  // FIXED TIMERS: Newly & Disappearing
   let timerHtml = '';
   if (card.is_disappearing && card.disappear_expires_at) {
     const expires = new Date(card.disappear_expires_at).getTime();
@@ -762,219 +750,39 @@ function renderCardTile(card, inv, isMarketplace = false) {
     if (diff > 0) {
       const hours = Math.floor(diff / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
-      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.8); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2;">⏳ ${hours}h ${mins}m</div>`;
+      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.8); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:10px;">schedule</span> ${hours}h ${mins}m</div>`;
     }
   } else if (card.status === 'newly' && card.created_at) {
     const created = new Date(card.created_at).getTime();
-    const expires = created + (24 * 60 * 60 * 1000); // 24 hours newly
+    const expires = created + (24 * 60 * 60 * 1000); 
     const diff = expires - Date.now();
     if (diff > 0) {
       const hours = Math.floor(diff / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
-      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.8); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2;">⏳ ${hours}h ${mins}m</div>`;
+      timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.8); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:10px;">schedule</span> ${hours}h ${mins}m</div>`;
     }
   }
 
-  // FIXED BONUS PRICE
   let priceHtml = '';
   if (card.is_bonus) {
     priceHtml = `<div class="card-price" style="color:#FF6B35; font-weight:800; font-size:13px;">${card.bonus_referral_threshold || 10} Refs</div>`;
   } else {
-    priceHtml = `<div class="card-price" style="color:#FFD700; font-weight:800; font-size:13px;">${formatPrice(card.current_price || card.original_price || 0)}</div>`;
+    priceHtml = `<div class="card-price">${formatPrice(card.current_price || card.original_price || 0)}</div>`;
   }
 
   return `
-    <div class="card-item ${frameClass}" style="${selBorder} position:relative; width:100%;" data-card-id="${card.id}" onclick="cardTileClick('${card.id}', ${isMarketplace})" onmousedown="startLongPress('${card.id}', ${isMarketplace})" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()" ontouchstart="startLongPress('${card.id}', ${isMarketplace})" ontouchend="cancelLongPress()">
-      <div class="card-image" style="width:100%; height:120px; border-radius:12px; overflow:hidden; position:relative;">
-        <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="${escapeHtml(card.name)}" loading="lazy" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+    <div class="card-item ${frameClass}" data-card-id="${card.id}" onclick="openCardModal('${card.id}')">
+      <div class="card-image">
+        <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="${escapeHtml(card.name)}" loading="lazy" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
         ${badge}${owned}${timerHtml}
-        ${selected ? '<div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:#22C55E; color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; z-index:3;">✓</div>' : ''}
       </div>
-      <div class="card-name" style="margin-top:8px; font-weight:700; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(card.name)}</div>
+      <div class="card-name">${escapeHtml(card.name)}</div>
       ${priceHtml}
     </div>`;
 }
 
 // ============================================================
-// LONG-PRESS & BULK BUY
-// ============================================================
-function startLongPress(cardId, isMarketplace) {
-  cancelLongPress();
-  
-  if (isMarketplace) {
-    if (APP.bulkBuySelected.length === 0) {
-      const inv = getInventory();
-      const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
-      if (qty > 0) return; // Already owned
-    }
-    APP.longPressTimer = setTimeout(() => {
-      toggleBulkBuySelect(cardId);
-      playSound('click');
-      if (navigator.vibrate) navigator.vibrate(30);
-    }, 600);
-  } else {
-    const inv = getInventory();
-    const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
-    if (qty <= 0) return;
-    APP.longPressTimer = setTimeout(() => {
-      toggleBulkSelect(cardId);
-      playSound('click');
-      if (navigator.vibrate) navigator.vibrate(30);
-    }, 600);
-  }
-}
-
-function cancelLongPress() {
-  if (APP.longPressTimer) {
-    clearTimeout(APP.longPressTimer);
-    APP.longPressTimer = null;
-  }
-}
-
-function cardTileClick(cardId, isMarketplace) {
-  cancelLongPress();
-  if (isMarketplace && APP.bulkBuySelected.length > 0) {
-    toggleBulkBuySelect(cardId);
-    return;
-  }
-  if (!isMarketplace && APP.bulkSelected.length > 0) {
-    toggleBulkSelect(cardId);
-    return;
-  }
-  openCardModal(cardId);
-}
-
-function toggleBulkBuySelect(cardId) {
-  const idx = APP.bulkBuySelected.indexOf(cardId);
-  if (idx === -1) APP.bulkBuySelected.push(cardId);
-  else APP.bulkBuySelected.splice(idx, 1);
-  updateBulkBuyBar();
-  renderMarketplaceGrid();
-}
-
-function updateBulkBuyBar() {
-  let bar = document.getElementById('bulkBuyBar');
-  if (!bar) {
-    bar = document.createElement('div');
-    bar.id = 'bulkBuyBar';
-    bar.style.cssText = 'display:none; position:fixed; bottom:70px; left:50%; transform:translateX(-50%); background:#1A1A2E; color:#fff; padding:12px 20px; border-radius:30px; z-index:1000; box-shadow:0 4px 12px rgba(0,0,0,0.3); width:90%; max-width:400px; text-align:center;';
-    bar.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:700; font-size:14px;"><span id="bulkBuyCount">0</span> selected</span>
-        <button onclick="confirmBulkBuy()" style="background:#FFD700; color:#1A1A2E; border:none; padding:8px 16px; border-radius:20px; font-weight:800; font-size:13px; cursor:pointer;">Buy All</button>
-      </div>
-    `;
-    document.body.appendChild(bar);
-  }
-  bar.style.display = APP.bulkBuySelected.length > 0 ? 'block' : 'none';
-  const cnt = document.getElementById('bulkBuyCount');
-  if (cnt) cnt.textContent = APP.bulkBuySelected.length;
-}
-
-async function confirmBulkBuy() {
-  if (!APP.bulkBuySelected.length) return;
-  const b = getBalances();
-  let totalPrice = 0;
-  let totalCoins = 0;
-  
-  const cardsToBuy = [];
-  for (const id of APP.bulkBuySelected) {
-    const card = APP.cards.find(c => c.id === id);
-    if (!card) continue;
-    const price = card.current_price || card.original_price || 0;
-    const coinFee = card.is_bonus ? 0 : coinFeeForBuy(card.status, card.is_vip);
-    totalPrice += price;
-    totalCoins += coinFee;
-    cardsToBuy.push({ card, price, coinFee });
-  }
-
-  if (b.deposit < totalPrice) { showToast('Need ' + formatPrice(totalPrice) + ' in deposit balance', 'error'); return; }
-  if (b.coins < totalCoins) { showToast('Need ' + totalCoins + ' PC. You have ' + b.coins + '.', 'error'); return; }
-
-  if (!confirm(`Buy ${cardsToBuy.length} cards for ${formatPrice(totalPrice)} + ${totalCoins} PC?`)) return;
-
-  showLoading('Purchasing...');
-  try {
-    if (isDemo()) {
-      Demo.update(s => {
-        s.depositBalance -= totalPrice;
-        s.coins -= totalCoins;
-        s.inventory = s.inventory || {};
-        
-        for (const item of cardsToBuy) {
-          if (!s.inventory[item.card.id]) {
-            s.inventory[item.card.id] = { quantity: 1, marketplace_quantity: 1, trade_quantity: 0 };
-          } else {
-            s.inventory[item.card.id].quantity += 1;
-            s.inventory[item.card.id].marketplace_quantity += 1;
-          }
-          s.ownedEver = s.ownedEver || {};
-          s.ownedEver[item.card.id] = true;
-        }
-        s.totalTrades = (s.totalTrades || 0) + cardsToBuy.length;
-        if (s.checklist) s.checklist.buy = true;
-      });
-      
-      Demo.log({ type: 'marketplace_buy', amount: totalPrice, metadata: { count: cardsToBuy.length, coins: totalCoins } });
-      Demo.notify('Cards Purchased', `You bought ${cardsToBuy.length} cards for ${formatPrice(totalPrice)}`, 'trade');
-      showToast('Purchased!', 'success');
-      playSound('reward');
-      APP.bulkBuySelected = [];
-      updateBulkBuyBar();
-      loadDashboard();
-      return;
-    }
-    
-    // Live Mode Bulk Buy (Loop)
-    const sb = getSupabase();
-    if (!sb) throw new Error('Supabase unavailable');
-    
-    for (const item of cardsToBuy) {
-      const { error } = await sb.functions.invoke('marketplace-buy', { body: { cardId: item.card.id } });
-      if (error) {
-        console.error("Failed to buy", item.card.name, error);
-        showToast(`Failed to buy ${item.card.name}`, 'error');
-      }
-    }
-    
-    showToast('Bulk purchase completed!', 'success');
-    playSound('reward');
-    APP.bulkBuySelected = [];
-    updateBulkBuyBar();
-    await refreshLiveProfile();
-    loadDashboard();
-
-  } catch (err) {
-    showToast(err.message || 'Purchase failed', 'error');
-    playSound('error');
-  } finally {
-    hideLoading();
-  }
-}
-
-
-// ============================================================
-// INVENTORY BULK SELL (Keep existing)
-// ============================================================
-function toggleBulkSelect(cardId) {
-  const idx = APP.bulkSelected.indexOf(cardId);
-  if (idx === -1) APP.bulkSelected.push(cardId);
-  else APP.bulkSelected.splice(idx, 1);
-  updateBulkSellBar();
-  renderInventoryFull();
-  renderDashInventory();
-}
-
-function updateBulkSellBar() {
-  const bar = document.getElementById('bulkSellBar');
-  if (!bar) return;
-  bar.style.display = APP.bulkSelected.length > 0 ? 'block' : 'none';
-  const cnt = document.getElementById('bulkSelectedCount');
-  if (cnt) cnt.textContent = String(APP.bulkSelected.length);
-}
-
-// ============================================================
-// CARD MODAL (Strict Bonus / Owned / Disappearing logic)
+// CARD MODAL (Strict Rules Applied)
 // ============================================================
 function openCardModal(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -983,19 +791,27 @@ function openCardModal(cardId) {
 
   const inv = getInventory();
   const owned = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+  const b = getBalances();
   const isVip = !!card.is_vip;
   const isBonus = !!card.is_bonus;
   const isDisappearing = !!card.is_disappearing;
   
   const coinFee = isBonus ? 0 : coinFeeForBuy(card.status || 'neutral', isVip);
-
   const originalPrice = card.original_price || card.current_price || 0;
   const currentPrice = card.current_price || originalPrice;
   const ceiling = originalPrice * 10;
 
   let actions = '';
   if (isBonus) {
-    actions = `<button class="btn-primary" onclick="closeCardModal();navigateTo('referral')">Earn via Referrals</button>`;
+    const req = card.bonus_referral_threshold || 10;
+    const has = b.totalReferrals || 0;
+    if (owned > 0) {
+      actions = `<div style="text-align:center; padding:12px; background:#f0f0f5; border-radius:12px; font-weight:700; color:#999;">Already Claimed</div>`;
+    } else if (has >= req) {
+      actions = `<button class="btn-primary" onclick="claimBonusCard('${cardId}')">Claim Free Card</button>`;
+    } else {
+      actions = `<button class="btn-buy" disabled style="background:#ccc;color:#666;">Need ${req - has} More Referrals</button>`;
+    }
   } else if (isDisappearing) {
     if (owned > 0) {
       actions = `<div style="text-align:center; padding:12px; background:#f0f0f5; border-radius:12px; font-weight:700; color:#999;">Already Owned</div>`;
@@ -1016,11 +832,19 @@ function openCardModal(cardId) {
     }
   }
 
-  // Detail rows
   let detailRows = '';
   if (isBonus) {
     detailRows = `
-      <div class="detail-row"><span class="label">Referrals Required</span><span class="value gold">${card.bonus_referral_threshold || 10} Referrals</span></div>
+      <div class="detail-row"><span class="label">Referrals Required</span><span class="value gold">${card.bonus_referral_threshold || 10}</span></div>
+      <div class="detail-row"><span class="label">Your Referrals</span><span class="value">${b.totalReferrals || 0}</span></div>
+    `;
+  } else if (isDisappearing) {
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const dayName = card.disappear_day !== undefined ? days[card.disappear_day] : 'Special';
+    detailRows = `
+      <div class="detail-row"><span class="label">Availability</span><span class="value" style="color:#9B59B6;">${dayName} Card</span></div>
+      <div class="detail-row"><span class="label">Current Price</span><span class="value gold">${formatPrice(currentPrice)}</span></div>
+      <div class="detail-row"><span class="label">Status</span><span class="value">SPECIAL</span></div>
     `;
   } else {
     detailRows = `
@@ -1030,49 +854,55 @@ function openCardModal(cardId) {
       <div class="detail-row"><span class="label">Ceiling</span><span class="value">${formatPrice(ceiling)}</span></div>
       <div class="detail-row"><span class="label">Status</span><span class="value">${(card.status || 'neutral').toUpperCase()}</span></div>
       <div class="detail-row"><span class="label">Coin Fee</span><span class="value gold">${coinFee} PC</span></div>
-      ${owned > 0 ? `<div class="detail-row"><span class="label">You Own</span><span class="value">${owned}</span></div>` : ''}
     `;
   }
 
   document.getElementById('cardModalBody').innerHTML = `
-    <div class="modal-card-image" style="width:100%; height:200px; border-radius:16px; overflow:hidden; margin-bottom:16px;">
-      <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
-    </div>
-    <div class="modal-card-title" style="font-size:20px; font-weight:900; margin-bottom:4px;">${escapeHtml(card.name)}</div>
-    <div class="modal-card-id" style="font-size:11px; color:#999; margin-bottom:16px;">ID: ${escapeHtml(card.card_code || card.id)}</div>
+    <div class="modal-card-image"><img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" /></div>
+    <div class="modal-card-title">${escapeHtml(card.name)}</div>
+    <div class="modal-card-id">ID: ${escapeHtml(card.card_code || card.id)}</div>
     
     ${detailRows}
     
     ${card.description ? `<div style="font-size:13px;color:#666;padding:12px 0;line-height:1.5;">${escapeHtml(card.description)}</div>` : ''}
-    <div class="modal-actions" style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">${actions}</div>
+    <div class="modal-actions">${actions}</div>
   `;
   document.getElementById('cardModal').classList.add('open');
 }
 function closeCardModal() { document.getElementById('cardModal').classList.remove('open'); }
 
-async function demandCard(cardId) {
+async function claimBonusCard(cardId) {
   if (!isDemo()) {
-    showLoading('Submitting demand...');
+    showLoading('Claiming...');
     try {
-      const { data, error } = await getSupabase().functions.invoke('demand-card', { body: { cardId } });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
-      showToast('Demand submitted!', 'success');
+      const { data, error } = await getSupabase().functions.invoke('claim-bonus-card', { body: { cardId } });
+      if (error || data?.error) throw new Error(data?.error || error.message);
+      showToast('Bonus Card Claimed!', 'success');
       playSound('reward');
+      await refreshLiveProfile();
+      closeCardModal();
+      loadDashboard();
     } catch (err) {
-      showToast(err.message || 'Demand failed', 'error');
+      showToast(err.message, 'error');
     } finally {
       hideLoading();
     }
-    closeCardModal();
     return;
   }
-  Demo.update(st => {
-    if (!st.demands) st.demands = [];
-    st.demands.push({ cardId, createdAt: Date.now() });
-  });
-  Demo.notify('Demand Submitted', 'You requested this card. Demand score increased!', 'info');
-  showToast('Demand submitted!', 'success');
+  
+  const s = Demo.state();
+  if (!s.inventory) s.inventory = {};
+  if (!s.inventory[cardId]) {
+    s.inventory[cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 0 };
+  } else {
+    s.inventory[cardId].quantity += 1;
+  }
+  Demo.update(st => { st.inventory = s.inventory; });
+  Demo.notify('Bonus Claimed', 'You successfully claimed your bonus card!', 'reward');
+  showToast('Card Claimed!', 'success');
+  playSound('reward');
   closeCardModal();
+  loadDashboard();
 }
 
 // ============================================================
@@ -1239,112 +1069,6 @@ async function confirmSell(cardId) {
       showToast('Listed successfully', 'success'); playSound('reward'); closeSellModal();
       await refreshLiveProfile(); loadInventory(); loadTrade(); loadDashboard();
     }
-  } catch (err) {
-    showToast(err.message, 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-// ============================================================
-// BULK SELL (Inventory Only)
-// ============================================================
-function openBulkSellModal() {
-  if (!APP.bulkSelected.length) return;
-  const b = getBalances();
-  const totalFee = APP.bulkSelected.length * CONFIG.LISTING_COIN_FEE;
-
-  document.getElementById('bulkSellBody').innerHTML = `
-    <div style="background:#f0f0f5;border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:#666;">
-      Listing ${APP.bulkSelected.length} cards — total fee: <b>${totalFee} PC</b> (you have ${b.coins} PC)
-    </div>
-    ${APP.bulkSelected.map((cardId, idx) => {
-      const card = APP.cards.find(c => c.id === cardId);
-      if (!card) return '';
-      const floor = card.original_price || card.current_price || 0;
-      const ceiling = floor * 10;
-      const suggested = card.current_price || floor;
-      return `
-        <div class="form-group">
-          <label>${escapeHtml(card.name)} — Price</label>
-          <div class="input-wrapper">
-            <span class="material-icons">payments</span>
-            <input type="number" id="bulkPrice_${cardId}" value="${Math.round(suggested)}" min="${Math.round(floor)}" max="${Math.round(ceiling)}" step="1" />
-          </div>
-          <div style="font-size:11px;color:#999;margin-top:2px;">Min: ${formatPrice(floor)} | Max: ${formatPrice(ceiling)}</div>
-        </div>
-      `;
-    }).join('')}
-    <button class="btn-primary" onclick="confirmBulkSell()">List All (${totalFee} PC)</button>
-  `;
-  document.getElementById('bulkSellModal').classList.add('open');
-}
-
-function closeBulkSellModal() { document.getElementById('bulkSellModal').classList.remove('open'); }
-
-async function confirmBulkSell() {
-  const b = getBalances();
-  const totalFee = APP.bulkSelected.length * CONFIG.LISTING_COIN_FEE;
-  if (b.coins < totalFee) { showToast('Need ' + totalFee + ' PC', 'error'); return; }
-
-  const prices = {};
-  for (const cardId of APP.bulkSelected) {
-    const input = document.getElementById('bulkPrice_' + cardId);
-    const card = APP.cards.find(c => c.id === cardId);
-    if (!input || !card) continue;
-    const price = parseFloat(input.value);
-    const floor = card.original_price || card.current_price || 0;
-    const ceiling = floor * 10;
-    if (!price || price < floor || price > ceiling) {
-      showToast('Invalid price for ' + card.name, 'error');
-      return;
-    }
-    prices[cardId] = price;
-  }
-
-  showLoading('Listing...');
-  try {
-    if (isDemo()) {
-      Demo.update(s => {
-        s.coins -= totalFee;
-        s.listings = s.listings || [];
-        const acc = Demo.account();
-        for (const cardId of APP.bulkSelected) {
-          if (s.inventory[cardId].quantity !== undefined) {
-            s.inventory[cardId].quantity -= 1;
-            if (s.inventory[cardId].quantity <= 0) delete s.inventory[cardId];
-          } else {
-            s.inventory[cardId] -= 1;
-            if (s.inventory[cardId] <= 0) delete s.inventory[cardId];
-          }
-
-          s.listings.push({
-            id: generateId('l'),
-            sellerId: acc.id,
-            cardId,
-            price: prices[cardId],
-            units: 2, 
-            remaining: 2, 
-            createdAt: Date.now(),
-            status: 'active',
-            coinFeePaid: CONFIG.LISTING_COIN_FEE,
-            current_effective_price: prices[cardId]
-          });
-        }
-        
-        if (!s.lastBotPurchaseAt) s.lastBotPurchaseAt = Date.now();
-      });
-    } else {
-      for (const cardId of APP.bulkSelected) {
-        await getSupabase().functions.invoke('create-listing', { body: { cardId, price: prices[cardId] } });
-      }
-      await refreshLiveProfile();
-    }
-    APP.bulkSelected = [];
-    updateBulkSellBar();
-    closeBulkSellModal();
-    loadInventory(); loadTrade(); loadDashboard();
-    showToast('All listed!', 'success'); playSound('reward');
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -1545,7 +1269,6 @@ async function cancelListing(listingId) {
         l.status = 'cancelled';
         s.inventory = s.inventory || {};
         
-        // FIXED: Apply ceiling penalty on cancel
         if (!s.inventory[l.cardId]) {
           s.inventory[l.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1, ceiling_price: l.original_price_at_listing * 9 };
         } else {
@@ -1572,11 +1295,10 @@ async function cancelListing(listingId) {
 }
 
 // ============================================================
-// INVENTORY (Layout fixed)
+// INVENTORY
 // ============================================================
 function loadInventory() {
   renderInventoryFull();
-  updateBulkSellBar();
 }
 
 function renderInventoryFull() {
@@ -1599,12 +1321,11 @@ function renderInventoryFull() {
   const cnt = document.getElementById('inventoryCount');
   if (cnt) cnt.textContent = ids.length + ' cards';
   
-  // FIXED: 2-column layout for main inventory
   grid.innerHTML = `
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
       ${ids.map(id => {
         const c = APP.cards.find(x => x.id === id);
-        return c ? renderCardTile(c, inv, false) : '';
+        return c ? renderCardTile(c, inv) : '';
       }).join('')}
     </div>
   `;
@@ -1616,7 +1337,7 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING (Fixed Logic)
+// MINING (FIXED LOGIC)
 // ============================================================
 async function loadMining() {
   if (!isDemo()) {
@@ -1643,7 +1364,6 @@ async function loadMining() {
   const s = Demo.state();
   const today = new Date().toDateString();
   
-  // 12-Hour Session Logic
   const currentHour = new Date().getHours();
   const currentSession = currentHour < 12 ? 'AM' : 'PM';
   const sessionKey = `${today}-${currentSession}`;
@@ -1663,18 +1383,16 @@ async function loadMining() {
     });
   }
 
-  // Pick 3 cards strictly
   if (!s.dailyMiningCards || s.dailyMiningCards.length !== 3) {
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
-    // FIXED: Ensure mining only picks normal cards and checks current_price
+    // Pick random cards from the marketplace pool
     let pool = APP.cards.filter(c => {
       const price = c.current_price || c.original_price || 0;
       return !c.is_bonus && !c.is_disappearing && c.is_active && price >= cfg.minCardPrice && price <= cfg.maxCardPrice;
     });
     
-    // Fallback if pool is too small
     if (pool.length < 3) {
         pool = APP.cards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
     }
@@ -1682,7 +1400,6 @@ async function loadMining() {
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
     let selected = shuffled.slice(0, 3).map(c => c.id);
     
-    // Pad if still less than 3
     while (selected.length < 3 && APP.cards.length > 0) {
         selected.push(APP.cards[0].id);
     }
@@ -1760,10 +1477,6 @@ function renderMiningUI() {
     else if (ready) infoEl.textContent = 'All 3 cards ready.';
     else infoEl.textContent = 'Loading cards...';
   }
-}
-
-function tapMiningSlot() {
-  // Handled automatically by Daily cards assignment now.
 }
 
 async function startMining() {
@@ -2134,9 +1847,37 @@ function updateWithdrawInfo() {
 function toggleBonusWithdraw() {
   const use = document.getElementById('useBonusCard').checked;
   const amtInput = document.getElementById('withdrawAmount');
+  const bonusContainer = document.getElementById('bonusCardSelectionContainer');
+  
   if (amtInput) {
     amtInput.min = use ? 5000 : 20000;
     amtInput.placeholder = use ? 'Min ₦5,000' : 'Min ₦20,000';
+  }
+
+  if (bonusContainer) {
+    if (use) {
+      const inv = getInventory();
+      const bonusCards = Object.keys(inv).filter(id => {
+        const c = APP.cards.find(x => x.id === id);
+        return c && c.is_bonus && (inv[id]?.quantity > 0 || inv[id] > 0);
+      });
+      
+      if (bonusCards.length === 0) {
+        bonusContainer.innerHTML = '<div style="color:#FF4444;font-size:12px;margin-top:8px;">No Bonus Cards available.</div>';
+      } else {
+        bonusContainer.innerHTML = `
+          <label style="display:block;font-size:12px;margin-top:8px;margin-bottom:4px;font-weight:600;">Select Bonus Card to Consume:</label>
+          <select id="selectedBonusCardId" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;">
+            ${bonusCards.map(id => {
+              const c = APP.cards.find(x => x.id === id);
+              return `<option value="${id}">${c.name} (Requires ${c.bonus_referral_threshold} Refs)</option>`;
+            }).join('')}
+          </select>
+        `;
+      }
+    } else {
+      bonusContainer.innerHTML = '';
+    }
   }
 }
 
@@ -2145,9 +1886,11 @@ async function submitWithdraw() {
   const amt = parseFloat(document.getElementById('withdrawAmount').value);
   const pin = document.getElementById('withdrawPin').value;
   const useBonus = document.getElementById('useBonusCard').checked;
+  const selectedBonusId = useBonus ? document.getElementById('selectedBonusCardId')?.value : null;
 
   if (!isValidPin(pin)) { showToast('PIN must be 4 digits', 'error'); return; }
   if (!amt || amt < (useBonus ? 5000 : 20000)) { showToast('Invalid amount', 'error'); return; }
+  if (useBonus && !selectedBonusId) { showToast('Please select a Bonus Card', 'error'); return; }
   
   if (isDemo()) {
     if (b.earnings < amt) { showToast('Insufficient earnings', 'error'); return; }
@@ -2160,8 +1903,19 @@ async function submitWithdraw() {
       st.earningsBalance -= amt;
       st.lifetimeWithdrawn += amt;
       st.diamondPoints -= dpNeeded;
+      
+      // Consume the bonus card
+      if (selectedBonusId) {
+        if (st.inventory[selectedBonusId].quantity !== undefined) {
+          st.inventory[selectedBonusId].quantity -= 1;
+          if (st.inventory[selectedBonusId].quantity <= 0) delete st.inventory[selectedBonusId];
+        } else {
+          st.inventory[selectedBonusId] -= 1;
+          if (st.inventory[selectedBonusId] <= 0) delete st.inventory[selectedBonusId];
+        }
+      }
     });
-    Demo.log({ type: 'withdraw', amount: amt });
+    Demo.log({ type: 'withdraw', amount: amt, metadata: { bonusCardUsed: selectedBonusId } });
     Demo.notify('Withdrawal', 'Request for ' + formatPrice(amt) + ' submitted', 'info');
     showToast('Withdrawal requested (demo)', 'success');
     playSound('reward');
@@ -2170,7 +1924,7 @@ async function submitWithdraw() {
     showLoading('Processing withdrawal...');
     try {
       const { data, error } = await getSupabase().functions.invoke('withdrawal', { 
-        body: { amount: amt, pin, useBonusCard: useBonus } 
+        body: { amount: amt, pin, useBonusCard: useBonus, bonusCardId: selectedBonusId } 
       });
       if (error || data?.error) throw new Error(data?.error || error.message);
       showToast('Withdrawal requested successfully', 'success');
@@ -2615,7 +2369,6 @@ function loadReferral() {
     const coinEl = document.getElementById('referralCoinsEarned');
     if (coinEl) coinEl.textContent = String(s.referralCoins || 0);
 
-    // FIXED: Inject Simulate Button
     const container = document.getElementById('section-referral').querySelector('.content-area');
     if (container && !document.getElementById('simulateRefBtn')) {
       const btn = document.createElement('button');
@@ -3033,7 +2786,6 @@ async function loadCards() {
     APP.cards = (data || []).filter(c => {
       if (c.is_disappearing) {
         if (isDemo()) {
-           // In demo mode, limit disappearing cards to 2 max
            const app = c.disappear_appears_at;
            const exp = c.disappear_expires_at;
            if (!app || !exp) return true;
@@ -3046,7 +2798,6 @@ async function loadCards() {
       return true; 
     });
 
-    // Percentage visibility:
     {
       const userSeed = APP.user?.id || 'demo_seed';
       const visiblePct = isDemo() ? 50 : 80;
@@ -3057,13 +2808,6 @@ async function loadCards() {
         for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
         return Math.abs(hash) % 100 < visiblePct;
       });
-    }
-
-    // Limit disappearing cards in demo to exactly 2
-    if (isDemo()) {
-      const disappearing = APP.cards.filter(c => c.is_disappearing).slice(0, 2);
-      const rest = APP.cards.filter(c => !c.is_disappearing);
-      APP.cards = [...disappearing, ...rest];
     }
 
   } catch (e) {
@@ -3187,13 +2931,6 @@ window.filterInventory = filterInventory;
 window.openSellModal = openSellModal;
 window.closeSellModal = closeSellModal;
 window.confirmSell = confirmSell;
-window.openBulkSellModal = openBulkSellModal;
-window.closeBulkSellModal = closeBulkSellModal;
-window.confirmBulkSell = confirmBulkSell;
-window.toggleBulkSelect = toggleBulkSelect;
-window.startLongPress = startLongPress;
-window.cancelLongPress = cancelLongPress;
-window.cardTileClick = cardTileClick;
 window.tapMiningSlot = tapMiningSlot;
 window.startMining = startMining;
 window.completeDailyCombo = completeDailyCombo;
@@ -3238,5 +2975,4 @@ window.togglePushNotifications = togglePushNotifications;
 window.installPWA = installPWA;
 window.closeInstallModal = closeInstallModal;
 window.simulateReferral = simulateReferral;
-window.confirmBulkBuy = confirmBulkBuy;
-window.toggleBulkBuySelect = toggleBulkBuySelect;
+window.claimBonusCard = claimBonusCard;
