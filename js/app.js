@@ -32,7 +32,7 @@ const APP = {
 };
 
 // ============================================================
-// LOCAL NOTIFICATION (For UI alerts)
+// LOCAL NOTIFICATION & OS BAR CLEARING
 // ============================================================
 async function triggerLocalNotification(title, body) {
   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
@@ -47,6 +47,15 @@ async function triggerLocalNotification(title, body) {
       });
     } catch (e) {}
   }
+}
+
+async function clearOsNotifications() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const notifs = await reg.getNotifications();
+    notifs.forEach(n => n.close());
+  } catch (e) { console.warn('Failed to clear OS notifs', e); }
 }
 
 // ============================================================
@@ -335,8 +344,15 @@ function renderChecklist() {
   const pinDone = !!APP.profile?.pin_hash;
   const installDone = isPWAInstalled();
   const pushDone = (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  
+  const today = new Date().toISOString().slice(0, 10);
+  const rewardDone = APP.profile?.last_daily_claim === today;
+  const depositDone = Number(APP.profile?.deposit_balance) > 0;
+  const learnDone = localStorage.getItem('pandacard_learned') === 'true';
+  const announcementDone = localStorage.getItem('pandacard_announce_read') === 'true';
+  const buyDone = APP.profile?.owned_ever?.length > 0;
 
-  if (pinDone && installDone && pushDone) {
+  if (pinDone && installDone && pushDone && rewardDone && depositDone && learnDone && announcementDone && buyDone) {
     el.innerHTML = '';
     return;
   }
@@ -344,7 +360,12 @@ function renderChecklist() {
   const rows = [
     { key: 'install', label: 'Install the Panda App', action: "installPWA()", done: installDone },
     { key: 'push', label: 'Enable Push Notifications', action: "navigateTo('settings')", done: pushDone },
-    { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone }
+    { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone },
+    { key: 'reward', label: 'Claim your daily reward', action: "navigateTo('dailyreward')", done: rewardDone },
+    { key: 'deposit', label: 'Make your first deposit', action: "navigateTo('wallet')", done: depositDone },
+    { key: 'learn', label: 'Learn how the app works', action: "localStorage.setItem('pandacard_learned','true'); navigateTo('live'); renderChecklist();", done: learnDone },
+    { key: 'announcement', label: 'Check latest announcements', action: "localStorage.setItem('pandacard_announce_read','true'); navigateTo('announcements'); renderChecklist();", done: announcementDone },
+    { key: 'buy', label: 'Buy your first card', action: "navigateTo('trade')", done: buyDone }
   ];
 
   el.innerHTML = `
@@ -361,48 +382,84 @@ function renderChecklist() {
   `;
 }
 
-function renderPortfolioChart() {
+// ✅ UPDATED: REAL EVENT-BASED GRAPH
+async function renderPortfolioChart() {
   const canvas = document.getElementById('portfolioChart');
+  const chartInner = document.getElementById('chartInner');
+  const chartScroll = document.getElementById('chartScroll');
   if (!canvas || typeof Chart === 'undefined') return;
+  
   const ctx = canvas.getContext('2d');
   if (APP.portfolioChart) { try { APP.portfolioChart.destroy(); } catch (e) {} }
 
-  const inv = getInventory();
-  const cardIds = Object.keys(inv);
-  
-  const createdAt = new Date(APP.profile?.created_at || Date.now()).getTime();
-  const accountAgeDays = Math.max(1, Math.floor((Date.now() - createdAt) / 86400000));
-  const days = Math.min(APP.portfolioDays, accountAgeDays);
+  // Fetch transaction history to build the graph
+  const { data: txs } = await getSupabase().from('transactions')
+    .select('*')
+    .eq('user_id', APP.user.id)
+    .order('created_at', { ascending: true });
 
-  const labels = [];
-  const data = [];
-  let baseValue = 0;
+  const events = [];
+  let runningTotal = 0;
 
-  cardIds.forEach(id => {
-    const c = APP.cards.find(x => x.id === id);
-    const qty = inv[id]?.quantity !== undefined ? inv[id].quantity : (inv[id] || 0);
-    if (c) baseValue += (c.current_price || c.original_price || 0) * qty;
+  // Filter and calculate
+  (txs || []).forEach(tx => {
+    const cardId = tx.card_id || (tx.metadata && tx.metadata.card_id);
+    const card = APP.cards.find(c => c.id === cardId);
+    const val = card ? (card.current_price || card.original_price || 0) : (tx.amount || 0);
+
+    if (tx.type === 'marketplace_buy' || tx.type === 'trade_buy') {
+      runningTotal += val;
+      events.push({ time: new Date(tx.created_at).getTime(), total: runningTotal, type: tx.type, val: val });
+    } else if (tx.type === 'trade_sell' || tx.type === 'mining_reward' || tx.type === 'daily_combo' || tx.type === 'listing_create') {
+      // Note: listing_create doesn't reduce portfolio value unless the card leaves inventory, but for simplicity, we deduct.
+      runningTotal = Math.max(0, runningTotal - val);
+      events.push({ time: new Date(tx.created_at).getTime(), total: runningTotal, type: tx.type, val: -val });
+    }
   });
 
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-    
-    const wobble = (cardIds.length === 0 || days === 1) ? 1 : (1 + Math.sin(i / 2) * 0.08);
-    data.push(Math.round(baseValue * wobble));
+  // Get current total to ensure we match exact portfolio
+  const inv = getInventory();
+  let currentTotal = 0;
+  Object.keys(inv).forEach(id => {
+    const c = APP.cards.find(x => x.id === id);
+    if (c) currentTotal += (c.current_price || c.original_price || 0) * (inv[id]?.quantity || 0);
+  });
+  
+  // If currentTotal doesn't match events end, add an adjustment event
+  if (events.length > 0 && events[events.length-1].total !== currentTotal) {
+    events.push({ time: Date.now(), total: currentTotal, type: 'adjustment', val: currentTotal - events[events.length-1].total });
+  } else if (events.length === 0 && currentTotal > 0) {
+    events.push({ time: Date.now(), total: currentTotal, type: 'init', val: currentTotal });
   }
 
+  // Filter by APP.portfolioDays
+  const cutoff = Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000);
+  const filteredEvents = events.filter(e => e.time >= cutoff);
+  
+  const labels = [new Date(cutoff).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })];
+  const data = [0]; // Start at 0 for the cut-off date
+  
+  filteredEvents.forEach(e => {
+    labels.push(new Date(e.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    data.push(e.total);
+  });
+
   const chEl = document.getElementById('portfolioChartChange');
-  if (cardIds.length === 0) {
+  if (currentTotal === 0) {
     if (chEl) { chEl.textContent = 'Empty'; chEl.className = 'graph-change'; }
   } else {
-    const first = data[0] || 1;
-    const last = data[data.length - 1];
+    const first = data.find(v => v > 0) || 1;
+    const last = currentTotal;
     const changePct = ((last - first) / first) * 100;
     if (chEl) {
       chEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(1) + '%';
       chEl.className = 'graph-change ' + (changePct >= 0 ? 'up' : 'down');
     }
+  }
+
+  // Set width for horizontal scroll
+  if (chartInner) {
+    chartInner.style.width = Math.max(650, (data.length + 1) * 75) + 'px';
   }
 
   APP.portfolioChart = new Chart(ctx, {
@@ -413,18 +470,24 @@ function renderPortfolioChart() {
         data,
         borderColor: '#FFD700',
         backgroundColor: 'rgba(255,215,0,0.1)',
-        fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2
+        fill: true, tension: 0.1, pointRadius: 4, pointHoverRadius: 8, borderWidth: 3,
+        pointBackgroundColor: '#FFD700'
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: '#999', font: { size: 10 }, maxTicksLimit: 6 } },
-        y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#999', font: { size: 10 }, callback: v => formatPrice(v) } }
+        x: { grid: { display: false }, ticks: { color: '#999', font: { size: 10 }, maxTicksLimit: 10 } },
+        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#999', font: { size: 10 }, callback: v => formatPrice(v) } }
       }
     }
   });
+
+  // Auto scroll to end
+  setTimeout(() => {
+    if (chartScroll) chartScroll.scrollLeft = chartScroll.scrollWidth;
+  }, 100);
 }
 
 function changePortfolioTime(days, btn) {
@@ -455,32 +518,32 @@ function renderMarketplaceGrid() {
   }
 
   const inv = getInventory();
-  const grouped = { disappearing: [], bonus: [], vip: [], hot: [], cold: [], neutral: [], newly: [] };
+  // ✅ UPDATED: Group Hot/Neutral/Cold into one
+  const grouped = { disappearing: [], bonus: [], vip: [], standard: [], newly: [] };
   
   let disappearingSeen = 0;
 
   APP.cards.forEach(c => {
     if (c.is_disappearing && c.is_active) {
-      if (disappearingSeen < 1) {
-        grouped.disappearing.push(c);
-        disappearingSeen++;
-      }
+      if (disappearingSeen < 1) { grouped.disappearing.push(c); disappearingSeen++; }
     }
     else if (c.is_bonus) grouped.bonus.push(c);
     else if (c.is_vip) grouped.vip.push(c);
-    else if (c.status === 'hot') grouped.hot.push(c);
-    else if (c.status === 'cold') grouped.cold.push(c);
     else if (c.status === 'newly') grouped.newly.push(c);
-    else grouped.neutral.push(c);
+    else grouped.standard.push(c);
+  });
+
+  // Sort standard: Hot -> Neutral -> Cold
+  grouped.standard.sort((a, b) => {
+    const order = { hot: 1, neutral: 2, cold: 3 };
+    return (order[a.status] || 2) - (order[b.status] || 2);
   });
 
   const sections = [
     { key: 'disappearing', label: 'Disappearing', color: '#9B59B6', icon: 'hourglass_top' },
     { key: 'bonus', label: 'Bonus', color: '#FF6B35', icon: 'card_giftcard' },
     { key: 'vip', label: 'VIP', color: '#FFD700', icon: 'star' },
-    { key: 'hot', label: 'Hot', color: '#FF4444', icon: 'whatshot' },
-    { key: 'cold', label: 'Cold', color: '#4A90D9', icon: 'ac_unit' },
-    { key: 'neutral', label: 'Neutral', color: '#888', icon: 'balance' },
+    { key: 'standard', label: 'Marketplace', color: '#1A1A2E', icon: 'store' },
     { key: 'newly', label: 'New', color: '#22C55E', icon: 'new_releases' }
   ];
 
@@ -504,18 +567,15 @@ function renderDashInventory() {
   const ids = Object.keys(inv).filter(id => (inv[id].quantity > 0 || inv[id] > 0));
   if (countEl) countEl.textContent = ids.length + ' cards';
   if (!ids.length) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><span class="material-icons">inbox</span><p>No cards yet</p></div>';
+    grid.innerHTML = '<div class="empty-state"><span class="material-icons">inbox</span><p>No cards yet</p></div>';
     return;
   }
   
-  grid.innerHTML = `
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-      ${ids.slice(0, 9).map(id => {
-        const c = APP.cards.find(x => x.id === id);
-        return c ? renderCardTile(c, inv) : '';
-      }).join('')}
-    </div>
-  `;
+  // HTML already changed to card-scroll-row in app.html
+  grid.innerHTML = ids.slice(0, 9).map(id => {
+    const c = APP.cards.find(x => x.id === id);
+    return c ? renderCardTile(c, inv) : '';
+  }).join('');
 }
 
 function renderCardTile(card, inv) {
@@ -539,7 +599,8 @@ function renderCardTile(card, inv) {
   const owned = qty > 0 ? '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>' : '';
 
   let timerHtml = '';
-  if (card.is_disappearing && card.disappear_expires_at) {
+  // ✅ REMOVED timer for disappearing cards in inventory. Only show if NOT owned.
+  if (card.is_disappearing && card.disappear_expires_at && qty === 0) {
     const expires = new Date(card.disappear_expires_at).getTime();
     const diff = expires - Date.now();
     if (diff > 0) {
@@ -838,15 +899,12 @@ async function renderTradeBuyListings() {
   const { data } = await getSupabase().from('listings').select('*').eq('status', 'active').gt('remaining', 0);
   listings = data || [];
 
-  listings = listings.filter(l => l.status === 'active' && l.remaining > 0);
+  // ✅ FIXED: Filter out my own listings entirely from the BUY tab
+  listings = listings.filter(l => l.status === 'active' && l.remaining > 0 && (l.sellerId || l.seller_id) !== myId);
   const inv = getInventory();
 
-  const mine = listings.filter(l => (l.sellerId || l.seller_id) === myId);
-  const others = listings.filter(l => (l.sellerId || l.seller_id) !== myId);
-  const sortedListings = [...mine, ...others];
-
   let html = '';
-  sortedListings.forEach(l => {
+  listings.forEach(l => {
     const card = APP.cards.find(c => c.id === (l.cardId || l.card_id));
     if (!card) return;
     if (APP.tradeSearch && !card.name.toLowerCase().includes(APP.tradeSearch)) return;
@@ -855,29 +913,18 @@ async function renderTradeBuyListings() {
       if (status !== APP.tradeFilter) return;
     }
     
-    const isMine = (l.sellerId || l.seller_id) === myId;
     const qty = inv[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv[card.id] || 0);
     const owned = qty > 0;
-    
-    const borderStyle = isMine ? 'border: 1px solid #FF4444;' : '';
-    const badge = isMine ? '<span style="color:#FF4444;font-size:10px;font-weight:800;margin-left:8px;">(YOUR LISTING)</span>' : '';
-    
-    const canCancel = isMine && l.remaining === l.units;
 
     html += `
-      <div class="listing-item" style="${borderStyle} display:flex; align-items:center; gap:12px; padding:12px;">
+      <div class="listing-item" style="display:flex; align-items:center; gap:12px; padding:12px;">
         <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:50px; height:65px; border-radius:8px; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
         <div class="info" style="flex:1;">
-          <div class="name" style="display:flex;align-items:center;color:${isMine ? '#FF4444' : '#1A1A2E'}; font-weight:700;">${escapeHtml(card.name)} ${badge}</div>
+          <div class="name" style="color:#1A1A2E; font-weight:700;">${escapeHtml(card.name)}</div>
           <div class="price" style="color:#FFD700; font-weight:800;">${formatPrice(l.current_effective_price || l.price)}</div>
           <div class="units" style="font-size:11px; color:#999;">${l.remaining}/${l.units} units</div>
         </div>
-        ${isMine 
-          ? (canCancel 
-              ? `<button class="buy-btn sell" onclick="cancelListing('${l.id}')">Cancel</button>` 
-              : `<button class="buy-btn" disabled style="background:#ccc;color:#666;font-size:11px;">1 Sold</button>`)
-          : `<button class="buy-btn" ${owned ? 'disabled style="background:#ccc;color:#666;"' : ''} onclick="buyFromTrade('${l.id}')">${owned ? 'Owned' : 'Buy'}</button>`
-        }
+        <button class="buy-btn" ${owned ? 'disabled style="background:#ccc;color:#666;"' : ''} onclick="buyFromTrade('${l.id}')">${owned ? 'Owned' : 'Buy'}</button>
       </div>`;
   });
   el.innerHTML = html || '<div class="empty-state"><span class="material-icons">store</span><p>No listings available</p></div>';
@@ -963,7 +1010,7 @@ function renderInventoryFull() {
     });
   }
   if (!ids.length) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><span class="material-icons">inbox</span><p>No cards in inventory</p></div>';
+    grid.innerHTML = '<div class="empty-state"><span class="material-icons">inbox</span><p>No cards in inventory</p></div>';
     const cnt = document.getElementById('inventoryCount');
     if (cnt) cnt.textContent = '0 cards';
     return;
@@ -971,14 +1018,11 @@ function renderInventoryFull() {
   const cnt = document.getElementById('inventoryCount');
   if (cnt) cnt.textContent = ids.length + ' cards';
   
-  grid.innerHTML = `
-    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
-      ${ids.map(id => {
-        const c = APP.cards.find(x => x.id === id);
-        return c ? renderCardTile(c, inv) : '';
-      }).join('')}
-    </div>
-  `;
+  // HTML already changed to card-scroll-row in app.html
+  grid.innerHTML = ids.map(id => {
+    const c = APP.cards.find(x => x.id === id);
+    return c ? renderCardTile(c, inv) : '';
+  }).join('');
 }
 
 function filterInventory() {
@@ -987,32 +1031,95 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING
+// MINING (NEW LOGIC)
 // ============================================================
 async function loadMining() {
   const sb = getSupabase();
   if (!sb) return;
-  const today = new Date().toISOString().slice(0, 10);
-  const { data } = await sb.from('mining_sessions').select('*').eq('user_id', APP.user.id).eq('session_date', today);
-  const sessionsUsed = data ? data.length : 0;
   
-  document.getElementById('miningSessionsUsed').textContent = sessionsUsed + '/2';
-  document.getElementById('miningStartBtn').disabled = sessionsUsed >= 2;
-  document.getElementById('miningCostInfo').textContent = sessionsUsed >= 2 ? 'Daily limit reached.' : 'Select 3 cards from inventory to mine.';
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const currentHour = now.getUTCHours(); // Adjust based on timezone
+  const sessionSlot = currentHour < 12 ? 'AM' : 'PM';
+
+  const { data: assignment } = await sb.from('daily_mining')
+    .select('*')
+    .eq('user_id', APP.user.id)
+    .eq('session_date', today)
+    .eq('session_slot', sessionSlot)
+    .maybeSingle();
+
+  const assignedCardIds = assignment?.card_ids || [];
   
-  ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;font-size:12px;"><span class="material-icons" style="font-size:28px;color:#ddd;display:block;margin-bottom:4px;">add</span>Empty</div>';
-      el.dataset.cardId = '';
+  document.getElementById('miningSessionsUsed').textContent = (assignment?.completed ? '1' : '0') + '/2';
+  document.getElementById('miningStartBtn').disabled = true;
+
+  if (assignedCardIds.length === 0) {
+    document.getElementById('miningCostInfo').textContent = "Your account is new. Mining starts tomorrow!";
+    ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    return;
+  }
+
+  document.getElementById('miningCostInfo').textContent = "Tap slots to buy missing cards or mine if ready.";
+  
+  const inv = getInventory();
+  let allOwned = true;
+  
+  ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((elId, index) => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    
+    if (index >= assignedCardIds.length) {
+      el.style.display = 'none';
+      return;
+    }
+    
+    el.style.display = 'block';
+    const cardId = assignedCardIds[index];
+    const card = APP.cards.find(c => c.id === cardId);
+    
+    if (card) {
+      const hasMarketplace = (inv[card.id]?.marketplace_quantity || 0) > 0;
+      if (!hasMarketplace) allOwned = false;
+      
+      el.innerHTML = `
+        <img src="${card.image_url}" style="width:100%;border-radius:8px;${!hasMarketplace ? 'opacity:0.5;' : ''}" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+        <div style="font-size:10px;font-weight:bold;margin-top:4px;">${card.name}</div>
+        ${!hasMarketplace ? '<div style="color:#FF4444;font-size:9px;">Need to buy</div>' : '<div style="color:#22C55E;font-size:9px;">Ready</div>'}
+      `;
+      el.dataset.cardId = card.id;
+      el.onclick = () => {
+        if (!hasMarketplace) {
+          showToast('Buy this card from Marketplace to mine it', 'info');
+          navigateTo('trade');
+          document.getElementById('tradeSearchInput').value = card.name;
+          filterTradeListings();
+        }
+      };
     }
   });
+
+  const btn = document.getElementById('miningStartBtn');
+  if (allOwned && !assignment?.completed) {
+    btn.disabled = false;
+    btn.style.background = '#FFD700';
+  } else {
+    btn.disabled = true;
+    btn.style.background = '#888';
+    if (assignment?.completed) document.getElementById('miningCostInfo').textContent = "This session is already completed.";
+  }
 }
 
 async function startMining() {
-  const slots = ['miningSlot1', 'miningSlot2', 'miningSlot3'].map(id => document.getElementById(id).dataset.cardId).filter(Boolean);
-  if (slots.length !== 3) { showToast('Please select 3 cards', 'error'); return; }
-  if (!confirm('Mine these 3 cards? They will be permanently burned.')) return;
+  const slots = Array.from(document.querySelectorAll('.mining-card-grid .card-item'))
+    .filter(el => el.style.display !== 'none' && el.dataset.cardId)
+    .map(el => el.dataset.cardId);
+    
+  if (slots.length === 0) { showToast('No cards to mine', 'error'); return; }
+  if (!confirm(`Mine these ${slots.length} cards? They will be permanently burned.`)) return;
   
   showLoading('Mining...');
   try {
@@ -1036,9 +1143,60 @@ async function startMining() {
 }
 
 // ============================================================
-// DAILY COMBO
+// DAILY COMBO (SAT/SUN SCREENS)
 // ============================================================
 async function loadDailyCombo() {
+  const day = new Date().getDay();
+  const weekdayScreen = document.getElementById('comboWeekdayScreen');
+  const satScreen = document.getElementById('comboSaturdayScreen');
+  const sunScreen = document.getElementById('comboSundayScreen');
+  
+  if (day === 0) { // Sunday
+    weekdayScreen.style.display = 'none';
+    satScreen.style.display = 'none';
+    sunScreen.style.display = 'block';
+    return;
+  }
+  
+  if (day === 6) { // Saturday
+    weekdayScreen.style.display = 'none';
+    satScreen.style.display = 'block';
+    sunScreen.style.display = 'none';
+    
+    // Fetch last 5 days combos
+    const today = new Date();
+    const fiveDaysAgo = new Date(today); fiveDaysAgo.setDate(today.getDate() - 5);
+    const { data: combos } = await getSupabase().from('daily_combo')
+      .select('combo_date, completed')
+      .eq('user_id', APP.user.id)
+      .gte('combo_date', fiveDaysAgo.toISOString().slice(0, 10))
+      .order('combo_date', { ascending: true });
+      
+    let slotsHtml = '';
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(fiveDaysAgo); d.setDate(d.getDate() + i + 1);
+      const dStr = d.toISOString().slice(0, 10);
+      const c = (combos || []).find(x => x.combo_date === dStr);
+      const isDone = c && c.completed;
+      
+      slotsHtml += `
+        <div class="streak-slot ${isDone ? 'done' : 'missed'}" onclick="${!isDone ? "useDisappearingForStreak()" : ""}">
+          ${isDone ? '✓' : '✕'}
+        </div>
+      `;
+    }
+    document.getElementById('saturdayStreakSlots').innerHTML = slotsHtml;
+    document.getElementById('saturdayRewardAction').innerHTML = `
+      <button class="btn-primary" onclick="claimSaturdayReward()">Claim Week Reward (+40 DP)</button>
+    `;
+    return;
+  }
+
+  // Monday - Friday
+  weekdayScreen.style.display = 'block';
+  satScreen.style.display = 'none';
+  sunScreen.style.display = 'none';
+
   const sb = getSupabase();
   if (!sb) return;
   const today = new Date().toISOString().slice(0, 10);
@@ -1074,7 +1232,7 @@ async function loadDailyCombo() {
     } else if (owned) {
       action.innerHTML = `<button class="btn-primary" onclick="completeDailyCombo('${combo.id}')">Complete Combo (+12 DP)</button>`;
     } else {
-      action.innerHTML = `<button class="btn-primary" onclick="navigateTo('trade')">Find in Trade</button>`;
+      action.innerHTML = `<button class="btn-primary" onclick="navigateTo('trade'); setTimeout(()=>{ document.getElementById('tradeSearchInput').value = '${card.name.replace(/'/g, "\\'")}'; filterTradeListings(); }, 300)">Find in Trade</button>`;
     }
   }
 }
@@ -1100,7 +1258,7 @@ async function completeDailyCombo(comboId) {
 }
 
 // ============================================================
-// WALLET (WITH ADMIN SIMULATOR)
+// WALLET (ADMIN SIMULATORS)
 // ============================================================
 function loadWallet() {
   const b = getBalances();
@@ -1122,45 +1280,54 @@ function loadWallet() {
   const container = document.querySelector('#section-wallet .content-area');
   
   if (isAdmin && container && !document.getElementById('adminSimDepositBtn')) {
-    const btn = document.createElement('button');
-    btn.id = 'adminSimDepositBtn';
-    btn.className = 'btn-primary';
-    btn.style.cssText = 'width:100%; margin-top:20px; background:#9B59B6;';
-    btn.innerHTML = '🛠️ Admin: Simulate Live Deposit';
-    btn.onclick = adminSimulateDeposit;
-    container.appendChild(btn);
+    const btnDep = document.createElement('button');
+    btnDep.id = 'adminSimDepositBtn';
+    btnDep.className = 'btn-primary';
+    btnDep.style.cssText = 'width:100%; margin-top:20px; background:#9B59B6;';
+    btnDep.innerHTML = '🛠️ Admin: Simulate Deposit';
+    btnDep.onclick = adminSimulateDeposit;
+    container.appendChild(btnDep);
+    
+    const btnDp = document.createElement('button');
+    btnDp.id = 'adminSimDpBtn';
+    btnDp.className = 'btn-primary';
+    btnDp.style.cssText = 'width:100%; margin-top:10px; background:#4A90D9;';
+    btnDp.innerHTML = '🛠️ Admin: Simulate DP (+100)';
+    btnDp.onclick = adminSimulateDp;
+    container.appendChild(btnDp);
   }
 }
 
 async function adminSimulateDeposit() {
   if (APP.profile?.email !== 'solforeyx@gmail.com') return showToast('Not authorized', 'error');
-  
   const amountStr = prompt('Enter amount to simulate (NGN):', '20000');
   if (!amountStr) return;
   const amount = parseFloat(amountStr);
   if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
 
-  showLoading('Simulating deposit...');
+  showLoading('Simulating...');
   try {
     const sb = getSupabase();
-    const currentBal = Number(APP.profile.deposit_balance || 0);
-    const newBal = currentBal + amount;
-    
-    const { error } = await sb.from('users').update({ deposit_balance: newBal }).eq('id', APP.user.id);
-    if (error) throw error;
-
-    await sb.from('transactions').insert({
-      user_id: APP.user.id, type: 'deposit', amount: amount, reference: 'ADMIN_SIM_' + Date.now(), metadata: { gateway: 'admin' }
-    });
-
+    const newBal = Number(APP.profile.deposit_balance || 0) + amount;
+    await sb.from('users').update({ deposit_balance: newBal }).eq('id', APP.user.id);
+    await sb.from('transactions').insert({ user_id: APP.user.id, type: 'deposit', amount: amount, reference: 'ADMIN_SIM_' + Date.now(), metadata: { gateway: 'admin' } });
     await refreshLiveProfile();
     loadWallet();
     showToast('Deposited ₦' + amount.toLocaleString(), 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  } finally {
-    hideLoading();
-  }
+  } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(); }
+}
+
+async function adminSimulateDp() {
+  if (APP.profile?.email !== 'solforeyx@gmail.com') return showToast('Not authorized', 'error');
+  showLoading('Simulating...');
+  try {
+    const sb = getSupabase();
+    const newDp = Number(APP.profile.diamond_points || 0) + 100;
+    await sb.from('users').update({ diamond_points: newDp }).eq('id', APP.user.id);
+    await refreshLiveProfile();
+    loadWallet();
+    showToast('Added 100 DP', 'success');
+  } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(); }
 }
 
 function renderBankDetails() {
@@ -1216,7 +1383,6 @@ function openWithdrawModal() {
 }
 function closeWithdrawModal() { document.getElementById('withdrawModal').classList.remove('open'); }
 
-// ✅ BUG A FIX: now reflects bonus state, minimum switches between 5k/20k
 function updateWithdrawInfo() {
   const b = getBalances();
   const el = document.getElementById('withdrawInfo');
@@ -1233,7 +1399,6 @@ function updateWithdrawInfo() {
     </div>`;
 }
 
-// ✅ BUG A FIX: shows visual card image picker (radio buttons styled as cards)
 function toggleBonusWithdraw() {
   const use = document.getElementById('useBonusCard').checked;
   const amtInput = document.getElementById('withdrawAmount');
@@ -1280,7 +1445,6 @@ function toggleBonusWithdraw() {
   `;
 }
 
-// ✅ BUG A FIX: reads radio-selected bonus card instead of select dropdown
 async function submitWithdraw() {
   const b = getBalances();
   const amt = parseFloat(document.getElementById('withdrawAmount').value);
@@ -1406,6 +1570,21 @@ function loadSettings() {
     langEl.textContent = languageName(saved);
   }
 
+  // ✅ FIXED: Show "Set PIN" or "Change PIN"
+  const pinLabel = document.getElementById('pinSettingsLabel');
+  if (pinLabel) {
+    pinLabel.textContent = APP.profile?.pin_hash ? 'Change PIN' : 'Set PIN';
+  }
+
+  // ✅ FIXED: Mode switch UI update
+  const mode = localStorage.getItem('pandacard_mode') || 'demo';
+  const btnDemo = document.getElementById('modeBtnDemo');
+  const btnLive = document.getElementById('modeBtnLive');
+  if (btnDemo) btnDemo.classList.toggle('active', mode === 'demo');
+  if (btnLive) btnLive.classList.toggle('active', mode === 'live');
+  const helper = document.getElementById('modeHelperText');
+  if (helper) helper.textContent = mode === 'demo' ? 'Demo mode: local data only' : 'Live mode: real money';
+
   const settingsContainer = document.querySelector('#section-settings .content-area');
   if (settingsContainer && !document.getElementById('settingsPushToggle')) {
     const pushSection = document.createElement('div');
@@ -1439,7 +1618,11 @@ function toggleSound() {
   showToast(v ? 'Sound on' : 'Sound off', 'success');
 }
 
-function openPinModal() { document.getElementById('pinModal').classList.add('open'); }
+function openPinModal(mode) { 
+  const currentGroup = document.getElementById('currentPinGroup');
+  if (currentGroup) currentGroup.style.display = (mode === 'change' && APP.profile?.pin_hash) ? 'block' : 'none';
+  document.getElementById('pinModal').classList.add('open'); 
+}
 function closePinModal() { document.getElementById('pinModal').classList.remove('open'); }
 
 async function savePin() {
@@ -1452,8 +1635,10 @@ async function savePin() {
   try {
     const { error } = await getSupabase().from('users').update({ pin_hash: demoHashPassword(newP) }).eq('id', APP.user.id);
     if (error) throw error;
+    await refreshLiveProfile(); // Refresh to update UI
     showToast('PIN saved', 'success');
     closePinModal();
+    loadSettings();
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -1547,7 +1732,7 @@ async function setLanguage(code) {
   closeLanguageModal();
   if (code === 'en') { showToast('English set', 'success'); return; }
   showToast('Translating...', 'info');
-  await translatePageContent(code);
+  await translatePageContent(code); // Note: Assuming this is in utils.js or config.js
   showToast('Language set to ' + languageName(code), 'success');
 }
 
@@ -1583,11 +1768,23 @@ async function loadNotifications() {
 
 async function markNotifRead(id) {
   await getSupabase().from('notifications').update({ read: true }).eq('id', id);
+  
+  // ✅ CLEAR FROM OS NOTIFICATION BAR
+  if ('serviceWorker' in navigator) {
+    const reg = await navigator.serviceWorker.ready;
+    const notifs = await reg.getNotifications();
+    notifs.forEach(n => n.close());
+  }
+
   loadNotifications();
 }
 
 async function markAllNotificationsRead() {
   await getSupabase().from('notifications').update({ read: true }).eq('user_id', APP.user.id);
+  
+  // ✅ CLEAR FROM OS NOTIFICATION BAR
+  await clearOsNotifications();
+
   loadNotifications();
   showToast('All read', 'success');
 }
@@ -1735,7 +1932,6 @@ async function submitContact() {
 
 // ============================================================
 // DAILY REWARD
-// ✅ BUG B FIX: fetches claims from daily_reward_claims table and renders calendar
 // ============================================================
 async function loadDailyReward() {
   updateCoinPricesUI();
@@ -1790,7 +1986,6 @@ async function loadDailyReward() {
   renderRewardCalendar(history, createdAt, new Date().toDateString());
 }
 
-// ✅ BUG B FIX: standalone calendar renderer (no demo state dependencies)
 function renderRewardCalendar(history, createdAt, todayStr) {
   const container = document.getElementById('rewardCalendar');
   if (!container) return;
@@ -1969,8 +2164,10 @@ async function loadCards() {
       return true; 
     });
 
+    // ✅ FIXED: Shuffle daily by including YYYY-MM-DD in the seed
     {
-      const userSeed = APP.user?.id || 'live_seed';
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
       const visiblePct = 80;
       APP.cards = APP.cards.filter(c => {
         if (c.is_disappearing) return true;
@@ -1985,6 +2182,30 @@ async function loadCards() {
     console.error('loadCards failed', e);
     APP.cards = [];
   }
+}
+
+// ============================================================
+// MIDNIGHT RESET LOGIC
+// ============================================================
+function checkMidnightReset() {
+  const today = new Date().toISOString().slice(0, 10);
+  const lastReset = localStorage.getItem('pandacard_last_reset_day');
+  
+  if (lastReset !== today) {
+    const resetScreen = document.getElementById('midnightResetScreen');
+    if (resetScreen) resetScreen.style.display = 'flex';
+    
+    setTimeout(async () => {
+      localStorage.setItem('pandacard_last_reset_day', today);
+      await loadCards();
+      if (document.getElementById('section-mining').classList.contains('active')) loadMining();
+      if (document.getElementById('section-combo').classList.contains('active')) loadDailyCombo();
+      if (resetScreen) resetScreen.style.display = 'none';
+      showToast('Your new day is ready!', 'success');
+    }, 3000); // Wait 3 seconds to simulate server sync
+    return true;
+  }
+  return false;
 }
 
 // ============================================================
@@ -2053,12 +2274,15 @@ async function boot() {
   }
   sendWelcomeNotification();
 
-  // SILENT PUSH SYNC FIX
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     subscribeUserToPush(true);
   }
 
-  await loadCards();
+  // Check Midnight Reset
+  const isResetting = checkMidnightReset();
+  if (!isResetting) {
+    await loadCards();
+  }
 
   updateBalanceUI();
   updateCoinPricesUI();
