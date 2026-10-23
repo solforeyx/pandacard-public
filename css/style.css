@@ -559,7 +559,7 @@ body.demo-mode .top-bar { top: 26px; }
 .section-header .see-all { font-size: 13px; font-weight: 600; color: #FFD700; cursor: pointer; }
 
 /* ============================================================
-   CARD GRID — HORIZONTAL CAROUSEL (2 ROWS)
+   CARD GRIDS (FIXED LAYOUTS)
    ============================================================ */
 
 #marketplaceGrid {
@@ -578,26 +578,24 @@ body.demo-mode .top-bar { top: 26px; }
   color: #1A1A2E;
 }
 
-/* The new horizontal scroll row */
-.card-scroll-row, #inventoryFullGrid, #dashInventoryGrid {
-  display: grid;
-  grid-auto-flow: column; 
-  grid-template-rows: repeat(2, 1fr); 
-  grid-auto-columns: 145px; 
-  gap: 12px;
-  overflow-x: auto; 
-  overflow-y: hidden;
-  padding-bottom: 12px;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+/* Marketplace & Main Inventory Grid (2 Columns) */
+.card-scroll-row, 
+#inventoryFullGrid {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 12px !important;
+  padding-bottom: 16px;
 }
 
-.card-scroll-row::-webkit-scrollbar,
-#inventoryFullGrid::-webkit-scrollbar,
-#dashInventoryGrid::-webkit-scrollbar {
-  display: none;
+/* Dashboard Inventory Grid (3 Columns) */
+#dashInventoryGrid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 8px !important;
+  padding-bottom: 16px;
 }
 
+/* Base Card Style */
 .card-item {
   background: #FFFFFF;
   border-radius: 16px;
@@ -607,13 +605,14 @@ body.demo-mode .top-bar { top: 26px; }
   border: 2px solid transparent;
   transition: transform 0.15s ease, box-shadow 0.2s ease;
   position: relative;
-  min-width: 0; 
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 .card-item:active { transform: scale(0.96); }
 
+/* Card Borders */
 .card-item.frame-hot { border-color: #FF4444; box-shadow: 0 0 15px rgba(255,68,68,0.2); }
 .card-item.frame-cold { border-color: #4A90D9; box-shadow: 0 0 15px rgba(74,144,217,0.2); }
 .card-item.frame-neutral { border-color: #CCCCCC; }
@@ -622,39 +621,49 @@ body.demo-mode .top-bar { top: 26px; }
 .card-item.frame-bonus { border-color: #FF6B35; }
 .card-item.frame-disappearing { border-color: #9B59B6; }
 
+/* Card Image (Uniform Size) */
 .card-item .card-image {
   width: 100%;
-  aspect-ratio: 1080 / 1440;
+  aspect-ratio: 3 / 4; /* Forces a perfect vertical rectangle */
   border-radius: 12px;
   overflow: hidden;
   background: #f0f0f5;
   position: relative;
 }
 
-.card-item .card-image img { width: 100%; height: 100%; object-fit: cover; }
+.card-item .card-image img { 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover; 
+}
 
 .card-item .card-name {
   font-size: 12px;
   font-weight: 700;
   color: #1A1A2E;
-  margin-top: 6px;
+  margin-top: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.card-item .card-price { font-size: 13px; font-weight: 700; color: #FFD700; }
+.card-item .card-price { font-size: 13px; font-weight: 800; color: #FFD700; }
 
-/* Badge on cards */
+/* Make dashboard cards slightly smaller text */
+#dashInventoryGrid .card-item { padding: 6px; }
+#dashInventoryGrid .card-item .card-name { font-size: 10px; margin-top: 4px; }
+#dashInventoryGrid .card-item .card-price { font-size: 11px; }
+
+/* Badges */
 .badge-top {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 9px;
-  font-weight: 700;
-  z-index: 5;
+  top: 8px;
+  left: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 8px;
+  font-weight: 800;
+  z-index: 2;
   color: #FFFFFF;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -727,9 +736,11 @@ body.demo-mode .top-bar { top: 26px; }
   z-index: 10;
 }
 
+/* FIXED MODAL IMAGE SIZE */
 .modal-sheet .modal-card-image {
   width: 100%;
-  max-height: 45vh;
+  aspect-ratio: 3 / 4;
+  max-height: 50vh;
   border-radius: 16px;
   overflow: hidden;
   background: #f0f0f5;
@@ -739,7 +750,7 @@ body.demo-mode .top-bar { top: 26px; }
 .modal-sheet .modal-card-image img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover; /* Changed from contain to cover */
 }
 
 .modal-sheet .modal-card-title {
@@ -797,13 +808,6 @@ body.demo-mode .top-bar { top: 26px; }
 .modal-sheet .modal-actions .btn-demand { background: #9B59B6; color: #fff; }
 .modal-sheet .modal-actions .btn-own { background: #22C55E; color: #fff; }
 .modal-sheet .modal-actions .btn-disabled { background: #ccc; color: #666; cursor: not-allowed; }
-
-/* Mini chart in modal */
-.modal-sheet .mini-chart {
-  width: 100%;
-  height: 120px;
-  margin: 12px 0;
-}
 
 /* ============================================================
    BANNER ALERTS
@@ -1884,7 +1888,7 @@ body.demo-mode .top-bar { top: 26px; }
 @media (max-width: 380px) {
   .balance-card .balance-earnings { font-size: 22px; }
   .stats-row { grid-template-columns: 1fr 1fr; }
-  .card-scroll-row { gap: 10px; }
+  .card-scroll-row { gap: 8px !important; }
   .mining-card-grid { gap: 6px; }
 }
 
@@ -1892,6 +1896,8 @@ body.demo-mode .top-bar { top: 26px; }
   .app-container { max-width: 700px; }
   .bottom-nav { max-width: 700px; }
   .modal-sheet { max-width: 700px; }
+  .card-scroll-row, #inventoryFullGrid { grid-template-columns: repeat(3, 1fr) !important; }
+  #dashInventoryGrid { grid-template-columns: repeat(4, 1fr) !important; }
 }
 
 @supports (padding: max(0px)) {
