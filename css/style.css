@@ -1,5 +1,5 @@
 /* ============================================================
-   PANDA CARD — MAIN STYLESHEET
+   PANDA CARD — MAIN STYLESHEET (FIXED LAYOUT)
    ============================================================ */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -578,32 +578,16 @@ body.demo-mode .top-bar { top: 26px; }
   color: #1A1A2E;
 }
 
-/* 
-  THIS IS THE MAGIC FIX:
-  We use grid-auto-flow: column to fill top-to-bottom, then left-to-right.
-  grid-template-rows: repeat(5, auto) means it will put 5 cards in a column, then create a new one.
-  grid-auto-columns: 42vw ensures the card is exactly 42% of the screen width.
-*/
-.card-scroll-row, 
-#inventoryFullGrid {
-  display: grid !important;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(5, auto); /* 5 cards down, then new column */
-  grid-auto-columns: 42vw; /* Exact width you requested */
-  gap: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 12px;
-  scroll-snap-type: x mandatory;
+/* The horizontal scroll row requested */
+.card-scroll-row {
+  display: flex !important;
+  flex-direction: row !important;
+  overflow-x: auto !important;
+  white-space: nowrap !important;
+  gap: 12px !important;
+  padding: 0 16px 12px 16px !important;
+  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
-}
-
-/* Dashboard Inventory Grid (3 Columns, vertical scroll) */
-#dashInventoryGrid {
-  display: grid !important;
-  grid-template-columns: repeat(3, 1fr) !important;
-  gap: 8px !important;
-  padding-bottom: 16px;
 }
 
 /* Hide scrollbar for the horizontal rows */
@@ -614,6 +598,9 @@ body.demo-mode .top-bar { top: 26px; }
 
 /* Base Card Style */
 .card-item {
+  flex: 0 0 42vw !important;
+  max-width: 180px !important;
+  aspect-ratio: 3 / 4 !important;
   background: #FFFFFF;
   border-radius: 16px;
   padding: 8px;
@@ -624,8 +611,7 @@ body.demo-mode .top-bar { top: 26px; }
   position: relative;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  scroll-snap-align: start;
+  overflow: hidden;
 }
 
 .card-item:active { transform: scale(0.96); }
@@ -639,14 +625,15 @@ body.demo-mode .top-bar { top: 26px; }
 .card-item.frame-bonus { border-color: #FF6B35; }
 .card-item.frame-disappearing { border-color: #9B59B6; }
 
-/* Card Image (3:4 Aspect Ratio - Strict) */
+/* Card Image */
 .card-item .card-image {
   width: 100%;
-  aspect-ratio: 3 / 4; 
+  height: 65% !important; /* Fits perfectly inside 3:4 aspect ratio */
   border-radius: 12px;
   overflow: hidden;
   background: #f0f0f5;
   position: relative;
+  flex-shrink: 0;
 }
 
 .card-item .card-image img { 
@@ -656,21 +643,20 @@ body.demo-mode .top-bar { top: 26px; }
 }
 
 .card-item .card-name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #1A1A2E;
-  margin-top: 8px;
-  white-space: nowrap;
+  margin-top: 4px;
+  white-space: normal;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  flex-grow: 1;
 }
 
-.card-item .card-price { font-size: 13px; font-weight: 800; color: #FFD700; }
-
-/* Make dashboard cards slightly smaller text */
-#dashInventoryGrid .card-item { padding: 6px; }
-#dashInventoryGrid .card-item .card-name { font-size: 10px; margin-top: 4px; }
-#dashInventoryGrid .card-item .card-price { font-size: 11px; }
+.card-item .card-price { font-size: 12px; font-weight: 800; color: #FFD700; margin-top: auto; }
 
 /* Badges */
 .badge-top {
@@ -1909,7 +1895,6 @@ body.demo-mode .top-bar { top: 26px; }
 @media (max-width: 380px) {
   .balance-card .balance-earnings { font-size: 22px; }
   .stats-row { grid-template-columns: 1fr 1fr; }
-  .card-scroll-row, #inventoryFullGrid { gap: 8px !important; }
   .mining-card-grid { gap: 6px; }
 }
 
@@ -1917,10 +1902,6 @@ body.demo-mode .top-bar { top: 26px; }
   .app-container { max-width: 700px; }
   .bottom-nav { max-width: 700px; }
   .modal-sheet { max-width: 700px; }
-  
-  /* On bigger screens, we can fit more columns */
-  .card-scroll-row, #inventoryFullGrid { grid-auto-columns: 30vw; }
-  #dashInventoryGrid { grid-template-columns: repeat(4, 1fr) !important; }
 }
 
 @supports (padding: max(0px)) {
