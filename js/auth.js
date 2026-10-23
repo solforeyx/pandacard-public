@@ -87,7 +87,7 @@ async function demoCreateAccount(data) {
   demoSetAccounts(accounts);
   localStorage.setItem(STORAGE.DEMO_SESSION, account.email);
 
-  // 🚨 FIXED: Added 'await' so the app waits for Brevo to finish before redirecting
+  // Send to Brevo
   try {
     const sb = getSupabase();
     if (sb) {
@@ -153,7 +153,6 @@ async function liveSignup(data) {
   const sb = getSupabase();
   if (!sb) return { error: 'Supabase not available' };
 
-  // 🚨 FALLBACKS: Prevent blank profiles if auth.html form is missing data
   const email = data.email.toLowerCase();
   const fullName = data.fullName || email.split('@')[0];
   const username = data.username || email.split('@')[0] + '_' + Math.floor(1000 + Math.random() * 9000);
@@ -166,14 +165,13 @@ async function liveSignup(data) {
   if (authError) return { error: authError.message };
   if (!authData.user) return { error: 'Signup failed' };
 
-  // 🚨 FIXED: Prevent duplicate Brevo emails by checking if user already existed
-  // If identities array is empty, it means the user already had an account
+  // Check if the user already existed (empty identities array means existing user)
   const isNewUser = authData.user.identities && authData.user.identities.length > 0;
   if (!isNewUser) {
     return { error: 'This email is already registered. Please log in instead.' };
   }
 
-  // 🚨 UPSERT: Prevents duplicate key errors if a trigger exists
+  // Upsert the profile in the public.users table
   const { error: profileError } = await sb.from('users').upsert({
     id: authData.user.id,
     email: email,
@@ -193,22 +191,23 @@ async function liveSignup(data) {
     diamond_points: 0,
     stage: 1,
     lifetime_earned: 0,
-    lifetime_withdrawn: 0
+    lifetime_withdrawn: 0,
+    deletion_status: 'active'
   });
 
   if (profileError) {
     console.error("Profile creation failed in Supabase:", profileError);
-    return { error: profileError.message };
+    // If it fails, we tell them to log in. The login function will auto-heal it.
+    return { error: 'Account created, but profile setup failed. Please log in.' };
   }
 
-  // 🚨 FIXED: Added 'await' so the app waits for Brevo to finish
+  // Send to Brevo
   try {
     await sb.functions.invoke('welcome-email', { 
       body: { email: email, name: fullName } 
     });
   } catch (e) {
     console.error('Failed to invoke Brevo function', e);
-    // We don't return an error here. If Brevo fails, the user is still signed up.
   }
 
   return { user: authData.user };
@@ -227,13 +226,41 @@ async function liveLogin(email, password) {
 
   // ✅ FIXED: Check for pending deletion before allowing login
   try {
-    const { data: profile } = await sb.from('users').select('deletion_status').eq('id', data.user.id).single();
+    const { data: profile } = await sb.from('users').select('*').eq('id', data.user.id).maybeSingle();
+    
     if (profile && profile.deletion_status === 'pending_deletion') {
       window.location.href = 'deletion-pending.html';
       return { error: 'Account scheduled for deletion.', redirect: true };
     }
+
+    // ✅ FIXED: GHOST ACCOUNT HEALER
+    // If the user authenticated but the profile is missing (due to a failed signup), create it now.
+    if (!profile) {
+      console.warn("Profile missing for authenticated user. Auto-creating...");
+      const fullName = email.split('@')[0];
+      const username = fullName + '_' + Math.floor(1000 + Math.random() * 9000);
+      
+      await sb.from('users').upsert({
+        id: data.user.id,
+        email: email.toLowerCase(),
+        full_name: fullName,
+        username: username,
+        country: 'Nigeria',
+        country_code: 'NG',
+        currency: 'NGN',
+        referral_code: generateReferralCode(),
+        deposit_balance: 0,
+        earnings_balance: 0,
+        coins: 0,
+        diamond_points: 0,
+        stage: 1,
+        lifetime_earned: 0,
+        lifetime_withdrawn: 0,
+        deletion_status: 'active'
+      });
+    }
   } catch (err) {
-    console.warn('Could not verify deletion status on login:', err);
+    console.warn('Could not verify/heal profile on login:', err);
   }
 
   return { user: data.user, session: data.session };
@@ -254,7 +281,7 @@ async function liveGetUser() {
 async function liveGetProfile(userId) {
   const sb = getSupabase();
   if (!sb) return null;
-  const { data, error } = await sb.from('users').select('*').eq('id', userId).single();
+  const { data, error } = await sb.from('users').select('*').eq('id', userId).maybeSingle();
   if (error) {
     console.warn("Could not fetch profile:", error.message);
     return null;
@@ -325,7 +352,7 @@ async function requireAuth(redirectTo) {
     return null;
   }
 
-  // ✅ FIXED: Check deletion status for live mode on protected pages
+  // Check deletion status for live mode on protected pages
   if (!isDemo()) {
     const profile = await liveGetProfile(user.id);
     if (profile && profile.deletion_status === 'pending_deletion') {
