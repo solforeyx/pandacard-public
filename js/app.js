@@ -1,5 +1,5 @@
 // ============================================================
-// PANDA CARD — MAIN APP (FINAL FIXED VERSION)
+// PANDA CARD — MAIN APP (LIVE MODE ONLY)
 // ============================================================
 
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
@@ -18,7 +18,6 @@ const INSTALL_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const APP = {
   user: null,
   profile: null,
-  mode: 'demo',
   cards: [],
   dashTab: 'marketplace',
   tradeTab: 'buy',
@@ -29,136 +28,14 @@ const APP = {
   portfolioChart: null,
   paymentMethod: null,
   livePublished: false,
-  ratesLoaded: false,
-  botInterval: null
+  ratesLoaded: false
 };
 
 // ============================================================
-// DEMO SERVICE
+// LOCAL NOTIFICATION (For UI alerts)
 // ============================================================
-const Demo = {
-  account() { return demoGetSession(); },
-  state() { const a = this.account(); return a ? a.state : null; },
-  update(mutator) {
-    const a = this.account();
-    if (!a) return null;
-    mutator(a.state);
-    demoUpdateState(a.email, a.state);
-    return a.state;
-  },
-  notify(title, body, type) {
-    const a = this.account();
-    if (!a) return;
-    this.update(s => {
-      if (!s.notifications) s.notifications = [];
-      s.notifications.unshift({
-        id: generateId('n'),
-        title, body,
-        type: type || 'info',
-        read: false,
-        createdAt: Date.now()
-      });
-      if (s.notifications.length > 200) s.notifications = s.notifications.slice(0, 200);
-    });
-    if (APP.user) updateNotificationBadge();
-    playNotificationSound();
-    triggerLocalDemoNotification(title, body);
-  },
-  log(tx) {
-    this.update(s => {
-      if (!s.transactions) s.transactions = [];
-      s.transactions.unshift({ id: generateId('tx'), ...tx, createdAt: Date.now() });
-      if (s.transactions.length > 500) s.transactions = s.transactions.slice(0, 500);
-    });
-  }
-};
-
-// ============================================================
-// 🤖 SMART DEMO SIMULATION ENGINE (FIXED: 30s TIMERS)
-// ============================================================
-const BOT_NAMES = ["Alex", "Bella", "Chris", "Diana", "Ethan", "Fiona", "George", "Hannah"];
-
-function startDemoBotEngine() {
-  if (APP.botInterval) clearInterval(APP.botInterval);
-  
-  APP.botInterval = setInterval(() => {
-    if (!isDemo() || APP.cards.length === 0) return;
-    const s = Demo.state();
-    if (!s) return;
-
-    const activeListings = (s.listings || []).filter(l => l.status === 'active');
-    if (activeListings.length < 4 && Math.random() < 0.3) {
-      const randomCard = APP.cards[Math.floor(Math.random() * APP.cards.length)];
-      if (randomCard && !activeListings.find(l => l.cardId === randomCard.id)) {
-        const randomPrice = Math.round(randomCard.current_price * 1.1); 
-        const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-        
-        Demo.update(st => {
-          st.listings = st.listings || [];
-          st.listings.push({
-            id: generateId('l'),
-            sellerId: 'bot_' + botName,
-            sellerName: botName,
-            cardId: randomCard.id,
-            price: randomPrice,
-            units: 2,
-            remaining: 2,
-            createdAt: Date.now(),
-            status: 'active',
-            current_effective_price: randomPrice
-          });
-        });
-        if (document.getElementById('section-trade').classList.contains('active')) renderTradeBuyListings();
-      }
-    }
-
-    if (s.lastBotPurchaseAt) {
-      const elapsed = Date.now() - s.lastBotPurchaseAt;
-      
-      if (elapsed >= 30 * 1000) { 
-        const userListings = (s.listings || [])
-          .filter(l => l.sellerId === s.userId && l.status === 'active')
-          .sort((a, b) => a.createdAt - b.createdAt); 
-
-        if (userListings.length > 0) {
-          const listingToBuy = userListings[0];
-          const randomUser = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-          
-          Demo.update(st => {
-            const lIndex = st.listings.findIndex(x => x.id === listingToBuy.id);
-            if (lIndex > -1) {
-              st.listings[lIndex].remaining -= 1;
-              if (st.listings[lIndex].remaining <= 0) {
-                st.listings[lIndex].status = 'sold_out';
-              }
-            }
-            
-            st.earningsBalance += listingToBuy.price; 
-            st.lifetimeEarned += listingToBuy.price;
-            st.totalTrades = (st.totalTrades || 0) + 1;
-            st.lastBotPurchaseAt = Date.now(); 
-          });
-
-          Demo.log({ type: 'trade_sell', amount: listingToBuy.price });
-          Demo.notify('Card Sold!', `${randomUser} bought 1 unit of your ${APP.cards.find(c=>c.id===listingToBuy.cardId)?.name} for ₦${listingToBuy.price.toLocaleString()}!`, 'success');
-          
-          if (document.getElementById('section-trade').classList.contains('active')) loadTrade();
-          if (document.getElementById('section-dashboard').classList.contains('active')) loadDashboard();
-          if (document.getElementById('section-wallet').classList.contains('active')) loadWallet();
-        } else {
-          Demo.update(st => { st.lastBotPurchaseAt = Date.now(); });
-        }
-      }
-    }
-  }, 15000); 
-}
-
-// ============================================================
-// LOCAL NOTIFICATION
-// ============================================================
-async function triggerLocalDemoNotification(title, body) {
+async function triggerLocalNotification(title, body) {
   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
-  
   if (Notification.permission === "granted") {
     try {
       const registration = await navigator.serviceWorker.ready;
@@ -168,28 +45,14 @@ async function triggerLocalDemoNotification(title, body) {
         badge: '/assets/icons/notification-icon.png',
         vibrate: [200, 100, 200, 100, 200]
       });
-    } catch (e) {
-      console.warn('Local notification failed:', e);
-    }
+    } catch (e) {}
   }
 }
 
 // ============================================================
-// GETTERS
+// GETTERS (LIVE ONLY)
 // ============================================================
 function getBalances() {
-  if (isDemo()) {
-    const s = Demo.state();
-    return {
-      earnings: s?.earningsBalance || 0,
-      deposit: s?.depositBalance || 0,
-      coins: s?.coins || 0,
-      dp: s?.diamondPoints || 0,
-      lifetimeEarned: s?.lifetimeEarned || 0,
-      lifetimeWithdrawn: s?.lifetimeWithdrawn || 0,
-      totalReferrals: s?.totalReferrals || 0
-    };
-  }
   const p = APP.profile;
   return {
     earnings: p?.earnings_balance || 0,
@@ -203,10 +66,6 @@ function getBalances() {
 }
 
 function getInventory() {
-  if (isDemo()) {
-    const s = Demo.state();
-    return s?.inventory || {};
-  }
   return APP.profile?.inventory || {};
 }
 
@@ -250,17 +109,6 @@ function navigateTo(section) {
   if (section === 'announcements') loadAnnouncements();
   if (section === 'help') loadFAQ();
   if (section === 'dailyreward') loadDailyReward();
-  
-  if (isDemo()) {
-    if (section === 'live') {
-      Demo.update(s => { if(s.checklist) s.checklist.learn = true; });
-      renderChecklist();
-    }
-    if (section === 'announcements') {
-      Demo.update(s => { if(s.checklist) s.checklist.announcement = true; });
-      renderChecklist();
-    }
-  }
 }
 
 function toggleSidebar() {
@@ -316,17 +164,12 @@ async function updateNotificationBadge() {
   if (!badge) return;
   let count = 0;
   
-  if (isDemo()) {
-    const s = Demo.state();
-    count = s?.notifications?.filter(n => !n.read).length || 0;
-  } else {
-    const { count: liveCount } = await getSupabase()
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', APP.user.id)
-      .eq('read', false);
-    count = liveCount || 0;
-  }
+  const { count: liveCount } = await getSupabase()
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', APP.user.id)
+    .eq('read', false);
+  count = liveCount || 0;
   
   badge.textContent = count > 99 ? '99+' : String(count);
   badge.classList.toggle('show', count > 0);
@@ -368,25 +211,16 @@ async function togglePushNotifications() {
   
   if (permission === 'granted') {
     if (pushToggle) pushToggle.classList.add('active');
-    
-    if (isDemo()) {
-      showToast('Demo notifications enabled!', 'success');
-      Demo.update(s => { if(s.checklist) s.checklist.push = true; });
-      renderChecklist();
-    } else {
-      await subscribeUserToPush();
-    }
+    await subscribeUserToPush(false);
   } else {
     showToast('Notification permission denied.', 'error');
     if (pushToggle) pushToggle.classList.remove('active');
   }
 }
 
-async function subscribeUserToPush() {
-  if (isDemo()) return;
-
+async function subscribeUserToPush(isSilent = false) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    showToast('Push notifications are not supported on this device.', 'error');
+    if (!isSilent) showToast('Push notifications are not supported on this device.', 'error');
     return;
   }
 
@@ -405,11 +239,11 @@ async function subscribeUserToPush() {
       }, { onConflict: 'user_id' });
       
       if (error) throw error; 
-      showToast('Push notifications enabled!', 'success');
+      if (!isSilent) showToast('Push notifications enabled!', 'success');
     }
   } catch (err) {
     console.error('Push subscription failed:', err);
-    showToast('Failed to enable push notifications: ' + err.message, 'error');
+    if (!isSilent) showToast('Failed to enable push notifications: ' + err.message, 'error');
   }
 }
 
@@ -477,16 +311,11 @@ function renderBannerAlerts() {
 
   const welcomeSeen = localStorage.getItem('pandacard_welcome_seen');
   if (!welcomeSeen) {
-    let name = 'trader';
-    if (isDemo()) {
-      name = Demo.account()?.fullName || 'trader';
-    } else {
-      name = APP.profile?.full_name || 'trader';
-    }
+    let name = APP.profile?.full_name || 'trader';
     el.innerHTML = `
       <div class="banner-alert info" style="margin-bottom:12px;">
         <span class="material-icons">celebration</span>
-        <span class="banner-text">Welcome to Panda Card, ${escapeHtml(name)}! ${isDemo() ? "You're in Demo Mode — explore freely." : "Your account is ready. Start trading!"}</span>
+        <span class="banner-text">Welcome to Panda Card, ${escapeHtml(name)}! Your account is ready. Start trading!</span>
         <button class="banner-dismiss" onclick="dismissWelcome()">&times;</button>
       </div>
     `;
@@ -503,28 +332,11 @@ function renderChecklist() {
   const el = document.getElementById('checklistCard');
   if (!el) return;
   
-  let items = {};
-  let pinDone = false;
-
-  if (isDemo()) {
-    const s = Demo.state();
-    if (!s) { el.innerHTML = ''; return; }
-    items = s.checklist || {};
-    pinDone = items.pin || !!s.pin;
-  } else {
-    pinDone = !!APP.profile?.pin_hash;
-    items = { reward: false, deposit: false, learn: false, announcement: false, buy: false }; 
-  }
-  
+  const pinDone = !!APP.profile?.pin_hash;
   const installDone = isPWAInstalled();
   const pushDone = (typeof Notification !== 'undefined' && Notification.permission === 'granted');
 
-  if (isDemo() && items.reward && items.deposit && items.learn && items.announcement && items.buy && pinDone && installDone && pushDone) {
-    el.innerHTML = '';
-    return;
-  }
-
-  if (!isDemo() && pinDone && installDone && pushDone) {
+  if (pinDone && installDone && pushDone) {
     el.innerHTML = '';
     return;
   }
@@ -534,16 +346,6 @@ function renderChecklist() {
     { key: 'push', label: 'Enable Push Notifications', action: "navigateTo('settings')", done: pushDone },
     { key: 'pin', label: 'Set your security PIN', action: "navigateTo('settings');setTimeout(()=>openPinModal('set'), 300)", done: pinDone }
   ];
-
-  if (isDemo()) {
-    rows.push(
-      { key: 'reward', label: 'Claim your daily reward', action: "navigateTo('dailyreward')", done: items.reward },
-      { key: 'deposit', label: 'Make your first deposit', action: "navigateTo('wallet')", done: items.deposit },
-      { key: 'learn', label: 'Learn how the app works', action: "navigateTo('live')", done: items.learn },
-      { key: 'announcement', label: 'Check latest announcements', action: "navigateTo('announcements')", done: items.announcement },
-      { key: 'buy', label: 'Buy your first card', action: "navigateTo('trade')", done: items.buy }
-    );
-  }
 
   el.innerHTML = `
     <div class="checklist-card">
@@ -568,13 +370,7 @@ function renderPortfolioChart() {
   const inv = getInventory();
   const cardIds = Object.keys(inv);
   
-  let createdAt = Date.now();
-  if (isDemo()) {
-    createdAt = Demo.account()?.createdAt || Date.now();
-  } else {
-    createdAt = new Date(APP.profile?.created_at || Date.now()).getTime();
-  }
-  
+  const createdAt = new Date(APP.profile?.created_at || Date.now()).getTime();
   const accountAgeDays = Math.max(1, Math.floor((Date.now() - createdAt) / 86400000));
   const days = Math.min(APP.portfolioDays, accountAgeDays);
 
@@ -661,7 +457,6 @@ function renderMarketplaceGrid() {
   const inv = getInventory();
   const grouped = { disappearing: [], bonus: [], vip: [], hot: [], cold: [], neutral: [], newly: [] };
   
-  // Strictly limit to 1 Disappearing card
   let disappearingSeen = 0;
 
   APP.cards.forEach(c => {
@@ -782,7 +577,7 @@ function renderCardTile(card, inv) {
 }
 
 // ============================================================
-// CARD MODAL (Strict Rules Applied)
+// CARD MODAL
 // ============================================================
 function openCardModal(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -824,7 +619,7 @@ function openCardModal(cardId) {
       <button class="btn-primary" onclick="closeCardModal();navigateTo('inventory')">Go to Inventory</button>
     `;
   } else {
-    const hasBought = isDemo() && Demo.state()?.ownedEver?.[cardId];
+    const hasBought = APP.profile?.owned_ever?.includes(cardId); 
     if (hasBought) {
       actions = `<button class="btn-buy" onclick="closeCardModal();navigateTo('trade'); setTimeout(()=>{ document.getElementById('tradeSearchInput').value = '${card.name.replace(/'/g, "\\'")}'; filterTradeListings(); }, 300)">Find in Trade</button>`;
     } else {
@@ -872,41 +667,24 @@ function openCardModal(cardId) {
 function closeCardModal() { document.getElementById('cardModal').classList.remove('open'); }
 
 async function claimBonusCard(cardId) {
-  if (!isDemo()) {
-    showLoading('Claiming...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke('claim-bonus-card', { body: { cardId } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      showToast('Bonus Card Claimed!', 'success');
-      playSound('reward');
-      await refreshLiveProfile();
-      closeCardModal();
-      loadDashboard();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
-    return;
+  showLoading('Claiming...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('claim-bonus-card', { body: { cardId } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    showToast('Bonus Card Claimed!', 'success');
+    playSound('reward');
+    await refreshLiveProfile();
+    closeCardModal();
+    loadDashboard();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
-  
-  const s = Demo.state();
-  if (!s.inventory) s.inventory = {};
-  if (!s.inventory[cardId]) {
-    s.inventory[cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 0 };
-  } else {
-    s.inventory[cardId].quantity += 1;
-  }
-  Demo.update(st => { st.inventory = s.inventory; });
-  Demo.notify('Bonus Claimed', 'You successfully claimed your bonus card!', 'reward');
-  showToast('Card Claimed!', 'success');
-  playSound('reward');
-  closeCardModal();
-  loadDashboard();
 }
 
 // ============================================================
-// BUY FROM MARKETPLACE (Single)
+// BUY FROM MARKETPLACE
 // ============================================================
 async function buyFromMarketplace(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -923,32 +701,6 @@ async function buyFromMarketplace(cardId) {
   showLoading('Purchasing...');
 
   try {
-    if (isDemo()) {
-      Demo.update(s => {
-        s.depositBalance -= price;
-        s.coins -= coinFee;
-        s.inventory = s.inventory || {};
-        
-        if (!s.inventory[cardId]) {
-          s.inventory[cardId] = { quantity: 1, marketplace_quantity: 1, trade_quantity: 0 };
-        } else {
-          s.inventory[cardId].quantity = (s.inventory[cardId].quantity || 0) + 1;
-          s.inventory[cardId].marketplace_quantity = (s.inventory[cardId].marketplace_quantity || 0) + 1;
-        }
-        
-        s.ownedEver = s.ownedEver || {};
-        s.ownedEver[cardId] = true;
-        s.totalTrades = (s.totalTrades || 0) + 1;
-        if (s.checklist) s.checklist.buy = true;
-      });
-      Demo.log({ type: 'marketplace_buy', cardId, cardName: card.name, amount: price, coins: coinFee });
-      Demo.notify('Card Purchased', 'You bought ' + card.name + ' for ' + formatPrice(price), 'trade');
-      showToast('Purchased!', 'success');
-      playSound('reward');
-      hideLoading();
-      loadDashboard();
-      return;
-    }
     const sb = getSupabase();
     if (!sb) throw new Error('Supabase unavailable');
     const { data, error } = await sb.functions.invoke('marketplace-buy', { body: { cardId } });
@@ -966,7 +718,7 @@ async function buyFromMarketplace(cardId) {
 }
 
 // ============================================================
-// SELL CARD (single)
+// SELL CARD
 // ============================================================
 function openSellModal(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -1031,44 +783,10 @@ async function confirmSell(cardId) {
 
   showLoading('Creating listing...');
   try {
-    if (isDemo()) {
-      Demo.update(s => {
-        s.coins -= CONFIG.LISTING_COIN_FEE;
-        
-        if (s.inventory[cardId].quantity !== undefined) {
-          s.inventory[cardId].quantity -= 1;
-          if (s.inventory[cardId].quantity <= 0) delete s.inventory[cardId];
-        } else {
-          s.inventory[cardId] -= 1;
-          if (s.inventory[cardId] <= 0) delete s.inventory[cardId];
-        }
-
-        s.listings = s.listings || [];
-        const acc = Demo.account();
-        s.listings.push({
-          id: generateId('l'),
-          sellerId: acc.id,
-          cardId: cardId,
-          price: price,
-          units: 2, 
-          remaining: 2, 
-          createdAt: Date.now(),
-          status: 'active',
-          coinFeePaid: CONFIG.LISTING_COIN_FEE,
-          current_effective_price: price
-        });
-        
-        if (!s.lastBotPurchaseAt) s.lastBotPurchaseAt = Date.now();
-      });
-      Demo.log({ type: 'listing_create', cardId, cardName: card.name, amount: price });
-      showToast('Listed successfully', 'success'); playSound('reward'); closeSellModal();
-      loadInventory(); loadTrade(); loadDashboard();
-    } else {
-      const { data, error } = await getSupabase().functions.invoke('create-listing', { body: { cardId, price } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      showToast('Listed successfully', 'success'); playSound('reward'); closeSellModal();
-      await refreshLiveProfile(); loadInventory(); loadTrade(); loadDashboard();
-    }
+    const { data, error } = await getSupabase().functions.invoke('create-listing', { body: { cardId, price } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    showToast('Listed successfully', 'success'); playSound('reward'); closeSellModal();
+    await refreshLiveProfile(); loadInventory(); loadTrade(); loadDashboard();
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -1077,7 +795,7 @@ async function confirmSell(cardId) {
 }
 
 // ============================================================
-// TRADE (Buy/Sell)
+// TRADE
 // ============================================================
 function loadTrade() {
   const b = getBalances();
@@ -1115,16 +833,10 @@ async function renderTradeBuyListings() {
   const el = document.getElementById('tradeBuyListings');
   if (!el) return;
   let listings = [];
-  let myId = null;
+  let myId = APP.user.id;
 
-  if (isDemo()) {
-    listings = Demo.state()?.listings || [];
-    myId = Demo.account()?.id;
-  } else {
-    const { data } = await getSupabase().from('listings').select('*').eq('status', 'active').gt('remaining', 0);
-    listings = data || [];
-    myId = APP.user.id;
-  }
+  const { data } = await getSupabase().from('listings').select('*').eq('status', 'active').gt('remaining', 0);
+  listings = data || [];
 
   listings = listings.filter(l => l.status === 'active' && l.remaining > 0);
   const inv = getInventory();
@@ -1176,13 +888,8 @@ async function renderTradeSellListings() {
   if (!el) return;
   let mine = [];
   
-  if (isDemo()) {
-    const acc = Demo.account();
-    mine = (Demo.state()?.listings || []).filter(l => l.sellerId === acc?.id && l.status === 'active');
-  } else {
-    const { data } = await getSupabase().from('listings').select('*').eq('status', 'active').eq('seller_id', APP.user.id);
-    mine = data || [];
-  }
+  const { data } = await getSupabase().from('listings').select('*').eq('status', 'active').eq('seller_id', APP.user.id);
+  mine = data || [];
 
   if (!mine.length) {
     el.innerHTML = '<div class="empty-state"><span class="material-icons">sell</span><p>No active listings</p><button class="btn-action" style="max-width:200px;margin:16px auto 0;" onclick="navigateTo(\'inventory\')">Go to Inventory</button></div>';
@@ -1209,41 +916,10 @@ async function buyFromTrade(listingId) {
   if (!confirm('Buy this card?')) return;
   showLoading('Purchasing...');
   try {
-    if (isDemo()) {
-      const b = getBalances();
-      const listing = (Demo.state()?.listings || []).find(l => l.id === listingId);
-      if (!listing) throw new Error('Listing gone');
-      if (b.deposit < listing.price) throw new Error('Insufficient deposit balance');
-      
-      Demo.update(s => {
-        s.depositBalance -= listing.price;
-        
-        const idx = s.listings.findIndex(x => x.id === listingId);
-        if (idx > -1) {
-          s.listings[idx].remaining -= 1;
-          if (s.listings[idx].remaining <= 0) s.listings[idx].status = 'sold_out';
-        }
-
-        s.inventory = s.inventory || {};
-        
-        if (!s.inventory[listing.cardId]) {
-          s.inventory[listing.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1 };
-        } else {
-          s.inventory[listing.cardId].quantity = (s.inventory[listing.cardId].quantity || 0) + 1;
-          s.inventory[listing.cardId].trade_quantity = (s.inventory[listing.cardId].trade_quantity || 0) + 1;
-        }
-
-        s.ownedEver = s.ownedEver || {};
-        s.ownedEver[listing.cardId] = true;
-        s.totalTrades = (s.totalTrades || 0) + 1;
-      });
-      loadTrade(); loadDashboard();
-    } else {
-      const { data, error } = await getSupabase().functions.invoke('buy-from-trade', { body: { listingId } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      await refreshLiveProfile();
-      loadTrade(); loadDashboard();
-    }
+    const { data, error } = await getSupabase().functions.invoke('buy-from-trade', { body: { listingId } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    await refreshLiveProfile();
+    loadTrade(); loadDashboard();
     showToast('Purchased!', 'success'); playSound('reward');
   } catch (err) {
     showToast(err.message, 'error');
@@ -1253,39 +929,13 @@ async function buyFromTrade(listingId) {
 }
 
 async function cancelListing(listingId) {
-  const s = Demo.state();
-  const l = s?.listings?.find(x => x.id === listingId);
-  if (l && l.remaining !== l.units) {
-    return showToast("You cannot cancel after 1 unit is sold. Wait for the second buyer.", "error");
-  }
-
   if (!confirm('Cancel listing? Card returns to inventory.')) return;
   showLoading('Cancelling...');
   try {
-    if (isDemo()) {
-      Demo.update(s => {
-        const l = (s.listings || []).find(x => x.id === listingId);
-        if (!l) return;
-        l.status = 'cancelled';
-        s.inventory = s.inventory || {};
-        
-        if (!s.inventory[l.cardId]) {
-          s.inventory[l.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1, ceiling_price: l.original_price_at_listing * 9 };
-        } else {
-          const currentCeiling = s.inventory[l.cardId].ceiling_price || (l.original_price_at_listing * 10);
-          let newCeiling = currentCeiling * 0.9;
-          if (newCeiling < l.original_price_at_listing) newCeiling = l.original_price_at_listing;
-          s.inventory[l.cardId].ceiling_price = newCeiling;
-          s.inventory[l.cardId].quantity = (s.inventory[l.cardId].quantity || 0) + 1;
-        }
-      });
-      loadTrade(); loadInventory();
-    } else {
-      const { data, error } = await getSupabase().functions.invoke('cancel-listing', { body: { listingId } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      await refreshLiveProfile();
-      loadTrade(); loadInventory();
-    }
+    const { data, error } = await getSupabase().functions.invoke('cancel-listing', { body: { listingId } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    await refreshLiveProfile();
+    loadTrade(); loadInventory();
     showToast('Cancelled', 'success');
   } catch (err) {
     showToast(err.message, 'error');
@@ -1337,397 +987,120 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING (FIXED LOGIC)
+// MINING
 // ============================================================
 async function loadMining() {
-  if (!isDemo()) {
-    const sb = getSupabase();
-    if (!sb) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const { data } = await sb.from('mining_sessions').select('*').eq('user_id', APP.user.id).eq('session_date', today);
-    const sessionsUsed = data ? data.length : 0;
-    
-    document.getElementById('miningSessionsUsed').textContent = sessionsUsed + '/2';
-    document.getElementById('miningStartBtn').disabled = sessionsUsed >= 2;
-    document.getElementById('miningCostInfo').textContent = sessionsUsed >= 2 ? 'Daily limit reached.' : 'Select 3 cards from inventory to mine.';
-    
-    ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;font-size:12px;"><span class="material-icons" style="font-size:28px;color:#ddd;display:block;margin-bottom:4px;">add</span>Empty</div>';
-        el.dataset.cardId = '';
-      }
-    });
-    return;
-  }
+  const sb = getSupabase();
+  if (!sb) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await sb.from('mining_sessions').select('*').eq('user_id', APP.user.id).eq('session_date', today);
+  const sessionsUsed = data ? data.length : 0;
   
-  const s = Demo.state();
-  const today = new Date().toDateString();
+  document.getElementById('miningSessionsUsed').textContent = sessionsUsed + '/2';
+  document.getElementById('miningStartBtn').disabled = sessionsUsed >= 2;
+  document.getElementById('miningCostInfo').textContent = sessionsUsed >= 2 ? 'Daily limit reached.' : 'Select 3 cards from inventory to mine.';
   
-  const currentHour = new Date().getHours();
-  const currentSession = currentHour < 12 ? 'AM' : 'PM';
-  const sessionKey = `${today}-${currentSession}`;
-
-  if (s.miningLastReset !== today) {
-    Demo.update(st => { 
-      st.miningToday = 0; 
-      st.miningLastReset = today;
-      st.miningSessionId = null; 
-    });
-  }
-
-  if (s.miningSessionId !== sessionKey) {
-    Demo.update(st => { 
-      st.miningSessionId = sessionKey; 
-      st.dailyMiningCards = []; 
-    });
-  }
-
-  if (!s.dailyMiningCards || s.dailyMiningCards.length !== 3) {
-    const stage = getStage();
-    const cfg = getStageConfig(stage);
-    
-    // Pick random cards from the marketplace pool
-    let pool = APP.cards.filter(c => {
-      const price = c.current_price || c.original_price || 0;
-      return !c.is_bonus && !c.is_disappearing && c.is_active && price >= cfg.minCardPrice && price <= cfg.maxCardPrice;
-    });
-    
-    if (pool.length < 3) {
-        pool = APP.cards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
-    }
-
-    const shuffled = [...pool].sort(() => 0.5 - Math.random());
-    let selected = shuffled.slice(0, 3).map(c => c.id);
-    
-    while (selected.length < 3 && APP.cards.length > 0) {
-        selected.push(APP.cards[0].id);
-    }
-
-    Demo.update(st => { st.dailyMiningCards = selected; });
-  }
-  
-  s.miningSlots = (s.dailyMiningCards || []).map(id => APP.cards.find(c => c.id === id)).filter(Boolean);
-  
-  renderMiningUI();
-}
-
-function renderMiningUI() {
-  const s = Demo.state();
-  const sessions = s.miningToday || 0;
-  const inv = getInventory();
-
-  const usedEl = document.getElementById('miningSessionsUsed');
-  if (usedEl) usedEl.textContent = sessions + '/2';
-  const earnEl = document.getElementById('miningTotalEarned');
-  if (earnEl) earnEl.textContent = formatPrice(s.miningEarnedToday || 0);
-  const nextEl = document.getElementById('miningNextTime');
-  if (nextEl) nextEl.textContent = sessions >= 2 ? 'Done' : 'Ready';
-
-  let allOwned = true;
-
-  ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((id, i) => {
+  ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((id) => {
     const el = document.getElementById(id);
-    if (!el) return;
-    const card = s.miningSlots?.[i];
-    
-    if (card) {
-      const qty = inv[card.id]?.quantity || inv[card.id] || 0;
-      const mktQty = inv[card.id]?.marketplace_quantity || (typeof inv[card.id] === 'number' ? inv[card.id] : 0);
-      const hasMktCard = mktQty > 0;
-      
-      if (!hasMktCard) allOwned = false;
-
-      el.innerHTML = `
-        <div class="card-image" style="${!hasMktCard ? 'opacity: 0.5; filter: grayscale(1);' : ''}">
-          <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
-        </div>
-        <div class="card-name" style="font-size:11px; margin-top:4px;">${escapeHtml(card.name)}</div>
-        ${!hasMktCard ? '<div style="font-size:9px;color:#FF4444;text-align:center;font-weight:700;margin-top:2px;">Need to buy</div>' : '<div style="font-size:9px;color:#22C55E;text-align:center;font-weight:700;margin-top:2px;">Ready</div>'}
-      `;
-      el.style.opacity = 1;
-      el.dataset.cardId = card.id;
-      
-      el.onclick = () => {
-        if (!hasMktCard) {
-          showToast('Buy this card from Marketplace to mine it', 'info');
-          navigateTo('trade');
-        } else {
-          openCardModal(card.id);
-        }
-      };
-    } else {
+    if (el) {
       el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;font-size:12px;"><span class="material-icons" style="font-size:28px;color:#ddd;display:block;margin-bottom:4px;">add</span>Empty</div>';
-      el.style.opacity = 0.6;
+      el.dataset.cardId = '';
     }
   });
-
-  const btn = document.getElementById('miningStartBtn');
-  const ready = s.miningSlots?.length === 3 && sessions < 2 && allOwned;
-  
-  if (btn) {
-    btn.disabled = !ready;
-    btn.style.background = ready ? '#FFD700' : '#888';
-  }
-  
-  const infoEl = document.getElementById('miningCostInfo');
-  if (infoEl) {
-    if (sessions >= 2) infoEl.textContent = 'Daily limit reached.';
-    else if (!allOwned) infoEl.textContent = 'You need to buy missing cards from the Marketplace first.';
-    else if (ready) infoEl.textContent = 'All 3 cards ready.';
-    else infoEl.textContent = 'Loading cards...';
-  }
 }
 
 async function startMining() {
-  if (!isDemo()) {
-    const slots = ['miningSlot1', 'miningSlot2', 'miningSlot3'].map(id => document.getElementById(id).dataset.cardId).filter(Boolean);
-    if (slots.length !== 3) { showToast('Please select 3 cards', 'error'); return; }
-    if (!confirm('Mine these 3 cards? They will be permanently burned.')) return;
+  const slots = ['miningSlot1', 'miningSlot2', 'miningSlot3'].map(id => document.getElementById(id).dataset.cardId).filter(Boolean);
+  if (slots.length !== 3) { showToast('Please select 3 cards', 'error'); return; }
+  if (!confirm('Mine these 3 cards? They will be permanently burned.')) return;
+  
+  showLoading('Mining...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('mining', { body: { cardIds: slots } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
     
-    showLoading('Mining...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke('mining', { body: { cardIds: slots } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      
-      showToast('Mined successfully!', 'success');
-      playSound('reward');
-      const resEl = document.getElementById('miningResult'); const amtEl = document.getElementById('miningResultAmount');
-      if (resEl) resEl.style.display = 'block'; if (amtEl) amtEl.textContent = formatPrice(data.reward);
-      setTimeout(() => { if (resEl) resEl.style.display = 'none'; }, 5000);
-      
-      await refreshLiveProfile();
-      loadMining();
-      updateBalanceUI();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
-    return;
+    showToast('Mined successfully!', 'success');
+    playSound('reward');
+    const resEl = document.getElementById('miningResult'); const amtEl = document.getElementById('miningResultAmount');
+    if (resEl) resEl.style.display = 'block'; if (amtEl) amtEl.textContent = formatPrice(data.reward);
+    setTimeout(() => { if (resEl) resEl.style.display = 'none'; }, 5000);
+    
+    await refreshLiveProfile();
+    loadMining();
+    updateBalanceUI();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
-  
-  const s = Demo.state();
-  if (!s.miningSlots || s.miningSlots.length !== 3) { showToast('Need 3 cards', 'error'); return; }
-  if (s.miningToday >= 2) { showToast('Daily limit', 'error'); return; }
-  
-  const inv = getInventory();
-  const allOwned = s.miningSlots.every(c => (inv[c.id]?.marketplace_quantity || 0) > 0 || (typeof inv[c.id] === 'number' && inv[c.id] > 0));
-  if (!allOwned) { showToast('You must own all 3 cards from the Marketplace to mine', 'error'); return; }
-
-  const total = s.miningSlots.reduce((sum, c) => sum + (c.current_price || c.original_price || 0), 0);
-  const reward = Math.round(total * 0.7);
-  if (!confirm('Mine for ' + formatPrice(reward) + '? Cards will be burned.')) return;
-
-  Demo.update(st => {
-    st.miningSlots.forEach(c => {
-      if (st.inventory[c.id].quantity !== undefined) {
-        st.inventory[c.id].quantity -= 1;
-        st.inventory[c.id].marketplace_quantity = Math.max(0, (st.inventory[c.id].marketplace_quantity || 0) - 1);
-        if (st.inventory[c.id].quantity <= 0) delete st.inventory[c.id];
-      } else {
-        st.inventory[c.id] -= 1;
-        if (st.inventory[c.id] <= 0) delete st.inventory[c.id];
-      }
-    });
-    st.earningsBalance += reward;
-    st.lifetimeEarned += reward;
-    st.miningToday = (st.miningToday || 0) + 1;
-    st.miningEarnedToday = (st.miningEarnedToday || 0) + reward;
-    st.miningSlots = [];
-    st.dailyMiningCards = [];
-  });
-  Demo.notify('Mining Reward', 'You earned ' + formatPrice(reward), 'reward');
-  const resEl = document.getElementById('miningResult');
-  const amtEl = document.getElementById('miningResultAmount');
-  if (resEl) resEl.style.display = 'block';
-  if (amtEl) amtEl.textContent = formatPrice(reward);
-  playSound('reward');
-  loadMining();
-  updateBalanceUI();
-  setTimeout(() => { if (resEl) resEl.style.display = 'none'; }, 5000);
 }
 
 // ============================================================
 // DAILY COMBO
 // ============================================================
 async function loadDailyCombo() {
-  if (!isDemo()) {
-    const sb = getSupabase();
-    if (!sb) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: combos } = await sb.from('daily_combo').select('*').eq('user_id', APP.user.id).eq('combo_date', today).limit(1);
-    
-    const progEl = document.getElementById('comboProgress');
-    if (progEl) {
-      progEl.innerHTML = Array.from({ length: 5 }, (_, i) => {
-        return `<div style="width:36px;height:36px;border-radius:50%;border:2px solid #ddd;background:transparent;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;"></div>`;
-      }).join('');
-    }
-
-    if (!combos || combos.length === 0) {
-      document.getElementById('comboCardArea').innerHTML = '<div class="empty-state"><p>No combo assigned today.</p></div>';
-      return;
-    }
-    
-    const combo = combos[0];
-    const card = APP.cards.find(c => c.id === combo.assigned_card_id);
-    document.getElementById('comboDpBalance').textContent = String(APP.profile?.diamond_points || 0);
-    document.getElementById('comboDpNeeded').textContent = String(dpRequiredForWithdrawal(20000));
-
-    if (card) {
-      document.getElementById('comboCardArea').innerHTML = `<div style="display:flex;gap:12px;align-items:center;"><img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:80px;height:106px;border-radius:10px;object-fit:cover;" /><div><div style="font-weight:700;font-size:15px;">${escapeHtml(card.name)}</div><div style="font-size:12px;color:#666;">${formatPrice(card.current_price || card.original_price || 0)}</div></div></div>`;
-      
-      const inv = getInventory(); 
-      const qty = inv[combo.assigned_card_id]?.quantity !== undefined ? inv[combo.assigned_card_id].quantity : (inv[combo.assigned_card_id] || 0);
-      const owned = qty > 0;
-      const action = document.getElementById('comboActionArea');
-      
-      if (combo.completed) {
-        action.innerHTML = '<div style="text-align:center;padding:16px;background:#22C55E;color:#fff;border-radius:12px;font-weight:700;">Completed Today</div>';
-      } else if (owned) {
-        action.innerHTML = `<button class="btn-primary" onclick="completeDailyCombo('${combo.id}')">Complete Combo (+12 DP)</button>`;
-      } else {
-        action.innerHTML = `<button class="btn-primary" onclick="navigateTo('trade')">Find in Trade</button>`;
-      }
-    }
-    return;
-  }
-
-  const s = Demo.state();
-  const dpEl = document.getElementById('comboDpBalance');
-  if (dpEl) dpEl.textContent = String(s.diamondPoints || 0);
-  const streakEl = document.getElementById('comboStreak');
-  if (streakEl) streakEl.textContent = String(s.comboStreak || 0);
-  const dpTodayEl = document.getElementById('comboDpToday');
-  if (dpTodayEl) dpTodayEl.textContent = String(s.dpToday || 0);
-  const dpNeedEl = document.getElementById('comboDpNeeded');
-  if (dpNeedEl) dpNeedEl.textContent = String(dpRequiredForWithdrawal(20000));
-
+  const sb = getSupabase();
+  if (!sb) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: combos } = await sb.from('daily_combo').select('*').eq('user_id', APP.user.id).eq('combo_date', today).limit(1);
+  
   const progEl = document.getElementById('comboProgress');
   if (progEl) {
     progEl.innerHTML = Array.from({ length: 5 }, (_, i) => {
-      const done = i < (s.comboStreak || 0);
-      return `<div style="width:36px;height:36px;border-radius:50%;border:2px solid ${done ? '#22C55E' : '#ddd'};background:${done ? '#22C55E' : 'transparent'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;">${done ? '✓' : ''}</div>`;
+      return `<div style="width:36px;height:36px;border-radius:50%;border:2px solid #ddd;background:transparent;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;"></div>`;
     }).join('');
   }
 
-  const today = new Date().toDateString();
-  const combo = s.dailyCombo || {};
-  if (!combo.assignedCardId || combo.date !== today) {
-    const inv = getInventory();
-    const eligible = APP.cards.filter(c => {
-      const qty = inv[c.id]?.quantity !== undefined ? inv[c.id].quantity : (inv[c.id] || 0);
-      return qty === 0 && c.is_active;
-    });
+  if (!combos || combos.length === 0) {
+    document.getElementById('comboCardArea').innerHTML = '<div class="empty-state"><p>No combo assigned today.</p></div>';
+    return;
+  }
+  
+  const combo = combos[0];
+  const card = APP.cards.find(c => c.id === combo.assigned_card_id);
+  document.getElementById('comboDpBalance').textContent = String(APP.profile?.diamond_points || 0);
+  document.getElementById('comboDpNeeded').textContent = String(dpRequiredForWithdrawal(20000));
+
+  if (card) {
+    document.getElementById('comboCardArea').innerHTML = `<div style="display:flex;gap:12px;align-items:center;"><img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:80px;height:106px;border-radius:10px;object-fit:cover;" /><div><div style="font-weight:700;font-size:15px;">${escapeHtml(card.name)}</div><div style="font-size:12px;color:#666;">${formatPrice(card.current_price || card.original_price || 0)}</div></div></div>`;
     
-    if (!eligible.length) {
-      const el = document.getElementById('comboCardArea');
-      if (el) el.innerHTML = '<div class="empty-state"><p>No eligible cards today</p></div>';
-      return;
+    const inv = getInventory(); 
+    const qty = inv[combo.assigned_card_id]?.quantity !== undefined ? inv[combo.assigned_card_id].quantity : (inv[combo.assigned_card_id] || 0);
+    const owned = qty > 0;
+    const action = document.getElementById('comboActionArea');
+    
+    if (combo.completed) {
+      action.innerHTML = '<div style="text-align:center;padding:16px;background:#22C55E;color:#fff;border-radius:12px;font-weight:700;">Completed Today</div>';
+    } else if (owned) {
+      action.innerHTML = `<button class="btn-primary" onclick="completeDailyCombo('${combo.id}')">Complete Combo (+12 DP)</button>`;
+    } else {
+      action.innerHTML = `<button class="btn-primary" onclick="navigateTo('trade')">Find in Trade</button>`;
     }
-    const pick = eligible[Math.floor(Math.random() * eligible.length)];
-    
-    Demo.update(st => { 
-      st.dailyCombo = { assignedCardId: pick.id, date: today, completed: false }; 
-      
-      const existingListing = (st.listings || []).find(l => l.cardId === pick.id && l.status === 'active');
-      if (!existingListing) {
-        st.listings = st.listings || [];
-        st.listings.push({
-          id: generateId('l'),
-          sellerId: 'bot_combo',
-          sellerName: 'Combo Bot',
-          cardId: pick.id,
-          price: Math.round(pick.current_price * 1.05),
-          units: 2,
-          remaining: 2,
-          createdAt: Date.now(),
-          status: 'active',
-          current_effective_price: Math.round(pick.current_price * 1.05)
-        });
-      }
-    });
-    loadDailyCombo();
-    return;
-  }
-
-  const card = APP.cards.find(c => c.id === combo.assignedCardId);
-  if (!card) {
-    const el = document.getElementById('comboCardArea');
-    if (el) el.innerHTML = '<div class="empty-state"><p>Card unavailable</p></div>';
-    return;
-  }
-
-  const cardArea = document.getElementById('comboCardArea');
-  if (cardArea) {
-    cardArea.innerHTML = `
-      <div style="display:flex;gap:12px;align-items:center;">
-        <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:80px;height:106px;border-radius:10px;object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
-        <div>
-          <div style="font-weight:700;font-size:15px;">${escapeHtml(card.name)}</div>
-          <div style="font-size:12px;color:#666;margin-top:2px;">${formatPrice(card.current_price || card.original_price || 0)}</div>
-        </div>
-      </div>`;
-  }
-
-  const inv = getInventory();
-  const qty = inv[combo.assignedCardId]?.quantity !== undefined ? inv[combo.assignedCardId].quantity : (inv[combo.assignedCardId] || 0);
-  const owned = qty > 0;
-  const action = document.getElementById('comboActionArea');
-  if (!action) return;
-  if (combo.completed) {
-    action.innerHTML = '<div style="text-align:center;padding:16px;background:#22C55E;color:#fff;border-radius:12px;font-weight:700;">Completed Today</div>';
-  } else if (owned) {
-    action.innerHTML = `<button class="btn-primary" onclick="completeDailyCombo()">Complete Combo (+12 DP)</button>`;
-  } else {
-    action.innerHTML = `<button class="btn-primary" onclick="navigateTo('trade')">Find in Trade</button>`;
   }
 }
 
 async function completeDailyCombo(comboId) {
-  if (!isDemo()) {
-    showLoading('Completing combo...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke(
-        'daily-combo?action=complete',
-        { body: { comboId } }
-      );
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      
-      showToast(`Combo complete! Earned ${data.total_dp} DP`, 'success');
-      playSound('reward');
-      await refreshLiveProfile();
-      loadDailyCombo();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
-    return;
+  showLoading('Completing combo...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke(
+      'daily-combo?action=complete',
+      { body: { comboId } }
+    );
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    
+    showToast(`Combo complete! Earned ${data.total_dp} DP`, 'success');
+    playSound('reward');
+    await refreshLiveProfile();
+    loadDailyCombo();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
-  
-  const s = Demo.state();
-  if (!s.dailyCombo || s.dailyCombo.completed) return;
-  Demo.update(st => {
-    st.dailyCombo.completed = true;
-    st.diamondPoints = (st.diamondPoints || 0) + 12;
-    st.dpToday = (st.dpToday || 0) + 12;
-    st.comboStreak = (st.comboStreak || 0) + 1;
-    if (st.comboStreak >= 5) {
-      st.diamondPoints += 40;
-      st.dpToday += 40;
-      st.comboStreak = 0;
-    }
-  });
-  Demo.notify('Daily Combo', 'You earned 12 DP', 'reward');
-  showToast('+12 DP', 'success');
-  playSound('reward');
-  loadDailyCombo();
 }
 
 // ============================================================
-// WALLET
+// WALLET (WITH ADMIN SIMULATOR)
 // ============================================================
 function loadWallet() {
   const b = getBalances();
@@ -1743,41 +1116,66 @@ function loadWallet() {
   if (elS) elS.textContent = getStageConfig(getStage()).name;
   renderBankDetails();
   renderWalletHistory();
+
+  // ADMIN SIMULATION INJECTION (OWNER ONLY)
+  const isAdmin = APP.profile?.email === 'solforeyx@gmail.com'; 
+  const container = document.querySelector('#section-wallet .content-area');
+  
+  if (isAdmin && container && !document.getElementById('adminSimDepositBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'adminSimDepositBtn';
+    btn.className = 'btn-primary';
+    btn.style.cssText = 'width:100%; margin-top:20px; background:#9B59B6;';
+    btn.innerHTML = '🛠️ Admin: Simulate Live Deposit';
+    btn.onclick = adminSimulateDeposit;
+    container.appendChild(btn);
+  }
+}
+
+async function adminSimulateDeposit() {
+  if (APP.profile?.email !== 'solforeyx@gmail.com') return showToast('Not authorized', 'error');
+  
+  const amountStr = prompt('Enter amount to simulate (NGN):', '20000');
+  if (!amountStr) return;
+  const amount = parseFloat(amountStr);
+  if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
+
+  showLoading('Simulating deposit...');
+  try {
+    const sb = getSupabase();
+    const currentBal = Number(APP.profile.deposit_balance || 0);
+    const newBal = currentBal + amount;
+    
+    const { error } = await sb.from('users').update({ deposit_balance: newBal }).eq('id', APP.user.id);
+    if (error) throw error;
+
+    await sb.from('transactions').insert({
+      user_id: APP.user.id, type: 'deposit', amount: amount, reference: 'ADMIN_SIM_' + Date.now(), metadata: { gateway: 'admin' }
+    });
+
+    await refreshLiveProfile();
+    loadWallet();
+    showToast('Deposited ₦' + amount.toLocaleString(), 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 function renderBankDetails() {
   const el = document.getElementById('walletBankDetails');
   if (!el) return;
-  if (isDemo()) {
-    const s = Demo.state();
-    if (s?.bankDetails?.accountNumber) {
-      el.innerHTML = `<div style="line-height:1.6;"><b>${escapeHtml(s.bankDetails.bank)}</b><br/>${escapeHtml(s.bankDetails.accountName)}<br/>${escapeHtml(s.bankDetails.accountNumber)}</div>`;
-    } else {
-      el.textContent = 'No bank details saved.';
-    }
-  } else {
-    el.innerHTML = APP.profile?.bank_details ? `<div style="line-height:1.6;"><b>${escapeHtml(APP.profile.bank_details.bank)}</b><br/>${escapeHtml(APP.profile.bank_details.accountName)}<br/>${escapeHtml(APP.profile.bank_details.accountNumber)}</div>` : 'No bank details saved.';
-  }
+  el.innerHTML = APP.profile?.bank_details ? `<div style="line-height:1.6;"><b>${escapeHtml(APP.profile.bank_details.bank)}</b><br/>${escapeHtml(APP.profile.bank_details.accountName)}<br/>${escapeHtml(APP.profile.bank_details.accountNumber)}</div>` : 'No bank details saved.';
 }
 
 async function renderWalletHistory() {
   const el = document.getElementById('walletHistory');
   if (!el) return;
   
-  if (!isDemo()) {
-    const { data } = await getSupabase().from('transactions').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(10);
-    if (!data || !data.length) { el.textContent = 'No recent transactions.'; return; }
-    el.innerHTML = data.map(tx => `<div class="bank-info" style="padding:8px 0;"><span class="label" style="text-transform:capitalize;">${escapeHtml(tx.type.replace('_', ' '))}</span><span class="value">${tx.amount ? formatPrice(Math.abs(tx.amount)) : '—'}</span></div>`).join('');
-    return;
-  }
-  
-  const txs = Demo.state()?.transactions || [];
-  if (!txs.length) { el.textContent = 'No recent transactions.'; return; }
-  el.innerHTML = txs.slice(0, 10).map(tx => `
-    <div class="bank-info" style="padding:8px 0;">
-      <span class="label">${escapeHtml(tx.type || 'tx')}</span>
-      <span class="value">${tx.amount ? formatPrice(Math.abs(tx.amount)) : tx.cardName || '—'}</span>
-    </div>`).join('');
+  const { data } = await getSupabase().from('transactions').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(10);
+  if (!data || !data.length) { el.textContent = 'No recent transactions.'; return; }
+  el.innerHTML = data.map(tx => `<div class="bank-info" style="padding:8px 0;"><span class="label" style="text-transform:capitalize;">${escapeHtml(tx.type.replace('_', ' '))}</span><span class="value">${tx.amount ? formatPrice(Math.abs(tx.amount)) : '—'}</span></div>`).join('');
 }
 
 function openDepositModal() {
@@ -1801,25 +1199,13 @@ async function submitDeposit() {
   if (!amount || amount < CONFIG.MIN_DEPOSIT_NGN) { showToast('Minimum deposit is ₦20,000', 'error'); return; }
   if (!APP.paymentMethod) { showToast('Select payment method', 'error'); return; }
 
-  if (isDemo()) {
-    Demo.update(s => {
-      s.depositBalance += amount;
-      if (s.checklist) s.checklist.deposit = true;
-    });
-    Demo.log({ type: 'deposit', amount, method: APP.paymentMethod });
-    Demo.notify('Deposit', 'Demo deposit of ' + formatPrice(amount) + ' completed', 'info');
-    showToast('Demo deposit successful (no real money)', 'success');
-    playSound('reward');
-    closeDepositModal(); loadWallet(); loadDashboard();
-  } else {
-    showLoading('Initializing payment...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke('initialize-deposit', { body: { amount, gateway: APP.paymentMethod } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      window.location.href = data.url; 
-    } catch (err) {
-      showToast(err.message, 'error'); hideLoading();
-    }
+  showLoading('Initializing payment...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('initialize-deposit', { body: { amount, gateway: APP.paymentMethod } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    window.location.href = data.url; 
+  } catch (err) {
+    showToast(err.message, 'error'); hideLoading();
   }
 }
 
@@ -1830,119 +1216,101 @@ function openWithdrawModal() {
 }
 function closeWithdrawModal() { document.getElementById('withdrawModal').classList.remove('open'); }
 
+// ✅ BUG A FIX: now reflects bonus state, minimum switches between 5k/20k
 function updateWithdrawInfo() {
   const b = getBalances();
   const el = document.getElementById('withdrawInfo');
   if (!el) return;
+  const useBonus = document.getElementById('useBonusCard')?.checked;
+  const minAmt = useBonus ? 5000 : 20000;
   const amt = parseFloat(document.getElementById('withdrawAmount')?.value) || 0;
   const dpNeeded = amt > 0 ? dpRequiredForWithdrawal(amt) : 0;
   el.innerHTML = `
     <div>Earnings: <b>${formatPrice(b.earnings)}</b></div>
     <div>DP: <b>${b.dp}</b>${amt > 0 ? ' / ' + dpNeeded + ' needed' : ''}</div>
-    <div style="margin-top:4px;color:${b.earnings >= amt ? '#22C55E' : '#FF4444'};">
-      ${amt >= 20000 ? (b.earnings >= amt ? 'Ready' : 'Insufficient balance') : 'Minimum ' + formatPrice(20000)}
+    <div style="margin-top:4px;color:${b.earnings >= amt && amt >= minAmt ? '#22C55E' : '#FF4444'};">
+      ${amt >= minAmt ? (b.earnings >= amt ? 'Ready' : 'Insufficient balance') : 'Minimum ' + formatPrice(minAmt)}
     </div>`;
 }
 
+// ✅ BUG A FIX: shows visual card image picker (radio buttons styled as cards)
 function toggleBonusWithdraw() {
   const use = document.getElementById('useBonusCard').checked;
   const amtInput = document.getElementById('withdrawAmount');
-  const bonusContainer = document.getElementById('bonusCardSelectionContainer');
+  const container = document.getElementById('bonusCardSelectionContainer');
   
   if (amtInput) {
     amtInput.min = use ? 5000 : 20000;
     amtInput.placeholder = use ? 'Min ₦5,000' : 'Min ₦20,000';
   }
 
-  if (bonusContainer) {
-    if (use) {
-      const inv = getInventory();
-      const bonusCards = Object.keys(inv).filter(id => {
-        const c = APP.cards.find(x => x.id === id);
-        return c && c.is_bonus && (inv[id]?.quantity > 0 || inv[id] > 0);
-      });
-      
-      if (bonusCards.length === 0) {
-        bonusContainer.innerHTML = '<div style="color:#FF4444;font-size:12px;margin-top:8px;">No Bonus Cards available.</div>';
-      } else {
-        bonusContainer.innerHTML = `
-          <label style="display:block;font-size:12px;margin-top:8px;margin-bottom:4px;font-weight:600;">Select Bonus Card to Consume:</label>
-          <select id="selectedBonusCardId" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;">
-            ${bonusCards.map(id => {
-              const c = APP.cards.find(x => x.id === id);
-              return `<option value="${id}">${c.name} (Requires ${c.bonus_referral_threshold} Refs)</option>`;
-            }).join('')}
-          </select>
-        `;
-      }
-    } else {
-      bonusContainer.innerHTML = '';
-    }
+  if (!container) return;
+  if (!use) { container.innerHTML = ''; return; }
+
+  const inv = getInventory();
+  const bonusIds = Object.keys(inv).filter(id => {
+    const c = APP.cards.find(x => x.id === id);
+    return c && c.is_bonus && (inv[id]?.quantity || 0) > 0;
+  });
+  
+  if (bonusIds.length === 0) {
+    container.innerHTML = '<div style="color:#FF4444;font-size:12px;margin-bottom:12px;">No Bonus Cards available.</div>';
+    return;
   }
+
+  container.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Select a Bonus Card to use:</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${bonusIds.map(id => {
+          const c = APP.cards.find(x => x.id === id);
+          return `
+            <label style="cursor:pointer;text-align:center;width:80px;">
+              <input type="radio" name="bonusCardChoice" value="${id}" style="display:none;"
+                onchange="document.querySelectorAll('[data-bonus-lbl]').forEach(e=>e.style.borderColor='#ddd');this.closest('label').querySelector('[data-bonus-lbl]').style.borderColor='#FFD700';" />
+              <div data-bonus-lbl style="border:3px solid #ddd;border-radius:8px;overflow:hidden;transition:border-color 0.2s;">
+                <img src="${escapeHtml(c.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:100%;height:96px;object-fit:cover;display:block;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+              </div>
+              <div style="font-size:10px;margin-top:4px;font-weight:600;line-height:1.2;">${escapeHtml(c.name)}</div>
+            </label>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
 }
 
+// ✅ BUG A FIX: reads radio-selected bonus card instead of select dropdown
 async function submitWithdraw() {
   const b = getBalances();
   const amt = parseFloat(document.getElementById('withdrawAmount').value);
   const pin = document.getElementById('withdrawPin').value;
   const useBonus = document.getElementById('useBonusCard').checked;
-  const selectedBonusId = useBonus ? document.getElementById('selectedBonusCardId')?.value : null;
+  const selectedBonusId = useBonus ? document.querySelector('input[name="bonusCardChoice"]:checked')?.value : null;
 
   if (!isValidPin(pin)) { showToast('PIN must be 4 digits', 'error'); return; }
   if (!amt || amt < (useBonus ? 5000 : 20000)) { showToast('Invalid amount', 'error'); return; }
   if (useBonus && !selectedBonusId) { showToast('Please select a Bonus Card', 'error'); return; }
   
-  if (isDemo()) {
-    if (b.earnings < amt) { showToast('Insufficient earnings', 'error'); return; }
-    const dpNeeded = dpRequiredForWithdrawal(amt);
-    if (b.dp < dpNeeded) { showToast('Need ' + dpNeeded + ' DP. You have ' + b.dp, 'error'); return; }
-    const s = Demo.state();
-    if (s.pin && s.pin !== pin) { showToast('Incorrect PIN', 'error'); return; }
-
-    Demo.update(st => {
-      st.earningsBalance -= amt;
-      st.lifetimeWithdrawn += amt;
-      st.diamondPoints -= dpNeeded;
-      
-      // Consume the bonus card
-      if (selectedBonusId) {
-        if (st.inventory[selectedBonusId].quantity !== undefined) {
-          st.inventory[selectedBonusId].quantity -= 1;
-          if (st.inventory[selectedBonusId].quantity <= 0) delete st.inventory[selectedBonusId];
-        } else {
-          st.inventory[selectedBonusId] -= 1;
-          if (st.inventory[selectedBonusId] <= 0) delete st.inventory[selectedBonusId];
-        }
-      }
+  showLoading('Processing withdrawal...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('withdrawal', { 
+      body: { amount: amt, pin, useBonusCard: useBonus, bonusCardId: selectedBonusId } 
     });
-    Demo.log({ type: 'withdraw', amount: amt, metadata: { bonusCardUsed: selectedBonusId } });
-    Demo.notify('Withdrawal', 'Request for ' + formatPrice(amt) + ' submitted', 'info');
-    showToast('Withdrawal requested (demo)', 'success');
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    showToast('Withdrawal requested successfully', 'success');
     playSound('reward');
+    await refreshLiveProfile();
     closeWithdrawModal(); loadWallet(); loadDashboard();
-  } else {
-    showLoading('Processing withdrawal...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke('withdrawal', { 
-        body: { amount: amt, pin, useBonusCard: useBonus, bonusCardId: selectedBonusId } 
-      });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      showToast('Withdrawal requested successfully', 'success');
-      playSound('reward');
-      await refreshLiveProfile();
-      closeWithdrawModal(); loadWallet(); loadDashboard();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
 }
 
 function openBankDetailsModal() {
-  const s = isDemo() ? Demo.state() : null;
-  const bankDetails = isDemo() ? s?.bankDetails : APP.profile?.bank_details;
-  
+  const bankDetails = APP.profile?.bank_details;
   if (bankDetails) {
     const bn = document.getElementById('bankName');
     const an = document.getElementById('bankAccountName');
@@ -1964,23 +1332,17 @@ async function saveBankDetails() {
   if (num !== conf) { showToast('Numbers do not match', 'error'); return; }
   if (num.length !== 10) { showToast('Must be 10 digits', 'error'); return; }
 
-  if (isDemo()) {
-    Demo.update(s => { s.bankDetails = { bank, accountName: name, accountNumber: num }; });
+  showLoading('Saving...');
+  try {
+    const { error } = await getSupabase().from('users').update({ bank_details: { bank, accountName: name, accountNumber: num } }).eq('id', APP.user.id);
+    if (error) throw error;
+    await refreshLiveProfile();
     showToast('Bank saved', 'success');
     closeBankModal(); renderBankDetails();
-  } else {
-    showLoading('Saving...');
-    try {
-      const { error } = await getSupabase().from('users').update({ bank_details: { bank, accountName: name, accountNumber: num } }).eq('id', APP.user.id);
-      if (error) throw error;
-      await refreshLiveProfile();
-      showToast('Bank saved', 'success');
-      closeBankModal(); renderBankDetails();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
 }
 
@@ -1988,76 +1350,44 @@ async function saveBankDetails() {
 // PROFILE
 // ============================================================
 function loadProfile() {
-  if (isDemo()) {
-    const a = Demo.account();
-    if (!a) return;
-    const s = a.state;
-    const nameEl = document.getElementById('profileName');
-    if (nameEl) nameEl.textContent = a.fullName || 'User';
-    const unEl = document.getElementById('profileUsername');
-    if (unEl) unEl.textContent = '@' + (a.username || 'user');
-    const stageEl = document.getElementById('profileStage');
-    if (stageEl) stageEl.textContent = getStageConfig(getStage()).name;
-    const joinedEl = document.getElementById('profileJoined');
-    if (joinedEl) joinedEl.textContent = 'Joined: ' + formatDate(a.createdAt);
-    const earnEl = document.getElementById('profileLifetimeEarned');
-    if (earnEl) earnEl.textContent = formatPrice(s.lifetimeEarned || 0);
-    const dpEl = document.getElementById('profileDp');
-    if (dpEl) dpEl.textContent = String(s.diamondPoints || 0);
-    const coinEl = document.getElementById('profileCoins');
-    if (coinEl) coinEl.textContent = String(s.coins || 0);
-    const tradeEl = document.getElementById('profileTrades');
-    if (tradeEl) tradeEl.textContent = String(s.totalTrades || 0);
-    const phoneEl = document.getElementById('profilePhone');
-    if (phoneEl) phoneEl.value = a.phone || '';
-    const addrEl = document.getElementById('profileAddress');
-    if (addrEl) addrEl.value = a.address || '';
-  } else {
-    const p = APP.profile;
-    if (!p) return;
-    const nameEl = document.getElementById('profileName');
-    if (nameEl) nameEl.textContent = p.full_name || 'User';
-    const unEl = document.getElementById('profileUsername');
-    if (unEl) unEl.textContent = '@' + (p.username || 'user');
-    const stageEl = document.getElementById('profileStage');
-    if (stageEl) stageEl.textContent = getStageConfig(p.stage || getStage()).name;
-    const joinedEl = document.getElementById('profileJoined');
-    if (joinedEl) joinedEl.textContent = 'Joined: ' + formatDate(p.created_at);
-    const earnEl = document.getElementById('profileLifetimeEarned');
-    if (earnEl) earnEl.textContent = formatPrice(p.lifetime_earned || 0);
-    const dpEl = document.getElementById('profileDp');
-    if (dpEl) dpEl.textContent = String(p.diamond_points || 0);
-    const coinEl = document.getElementById('profileCoins');
-    if (coinEl) coinEl.textContent = String(p.coins || 0);
-    const tradeEl = document.getElementById('profileTrades');
-    if (tradeEl) tradeEl.textContent = String(p.total_trades || 0);
-    const phoneEl = document.getElementById('profilePhone');
-    if (phoneEl) phoneEl.value = p.phone || '';
-    const addrEl = document.getElementById('profileAddress');
-    if (addrEl) addrEl.value = p.address || '';
-  }
+  const p = APP.profile;
+  if (!p) return;
+  const nameEl = document.getElementById('profileName');
+  if (nameEl) nameEl.textContent = p.full_name || 'User';
+  const unEl = document.getElementById('profileUsername');
+  if (unEl) unEl.textContent = '@' + (p.username || 'user');
+  const stageEl = document.getElementById('profileStage');
+  if (stageEl) stageEl.textContent = getStageConfig(p.stage || getStage()).name;
+  const joinedEl = document.getElementById('profileJoined');
+  if (joinedEl) joinedEl.textContent = 'Joined: ' + formatDate(p.created_at);
+  const earnEl = document.getElementById('profileLifetimeEarned');
+  if (earnEl) earnEl.textContent = formatPrice(p.lifetime_earned || 0);
+  const dpEl = document.getElementById('profileDp');
+  if (dpEl) dpEl.textContent = String(p.diamond_points || 0);
+  const coinEl = document.getElementById('profileCoins');
+  if (coinEl) coinEl.textContent = String(p.coins || 0);
+  const tradeEl = document.getElementById('profileTrades');
+  if (tradeEl) tradeEl.textContent = String(p.total_trades || 0);
+  const phoneEl = document.getElementById('profilePhone');
+  if (phoneEl) phoneEl.value = p.phone || '';
+  const addrEl = document.getElementById('profileAddress');
+  if (addrEl) addrEl.value = p.address || '';
 }
 
 async function saveProfile() {
   const phone = document.getElementById('profilePhone').value.trim();
   const address = document.getElementById('profileAddress').value.trim();
   
-  if (isDemo()) {
-    const a = Demo.account();
-    demoUpdateAccount(a.email, { phone, address });
+  showLoading('Saving...');
+  try {
+    const { error } = await getSupabase().from('users').update({ phone, address }).eq('id', APP.user.id);
+    if (error) throw error;
+    await refreshLiveProfile();
     showToast('Saved', 'success');
-  } else {
-    showLoading('Saving...');
-    try {
-      const { error } = await getSupabase().from('users').update({ phone, address }).eq('id', APP.user.id);
-      if (error) throw error;
-      await refreshLiveProfile();
-      showToast('Saved', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
 }
 
@@ -2065,19 +1395,10 @@ async function saveProfile() {
 // SETTINGS
 // ============================================================
 function loadSettings() {
-  APP.mode = getMode();
-  document.querySelectorAll('#section-settings .mode-switch button').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === APP.mode);
-  });
   const dm = document.getElementById('settingsDarkToggle');
   if (dm) dm.classList.toggle('active', document.body.classList.contains('dark-mode'));
   const snd = document.getElementById('settingsSoundToggle');
   if (snd) snd.classList.toggle('active', isSoundEnabled());
-
-  const helper = document.getElementById('modeHelperText');
-  if (helper) {
-    helper.textContent = APP.mode === 'demo' ? 'Demo mode: local data only' : 'Live mode: real accounts';
-  }
 
   const langEl = document.getElementById('settingsLanguage');
   if (langEl) {
@@ -2110,15 +1431,6 @@ function loadSettings() {
   }
 }
 
-function switchAppMode(mode) {
-  if (mode === 'live' && !APP.livePublished) { showToast('Live mode not available', 'info'); return; }
-  if (mode === APP.mode) return;
-  if (!confirm('Switch to ' + mode + ' mode?')) return;
-  setMode(mode);
-  showToast('Switching...', 'info');
-  setTimeout(() => { window.location.href = 'auth.html'; }, 500);
-}
-
 function toggleSound() {
   const v = !isSoundEnabled();
   localStorage.setItem(STORAGE.SOUND, String(v));
@@ -2136,27 +1448,16 @@ async function savePin() {
   if (!isValidPin(newP)) { showToast('PIN must be 4 digits', 'error'); return; }
   if (newP !== conf) { showToast('PINs do not match', 'error'); return; }
   
-  if (isDemo()) {
-    Demo.update(st => { 
-      st.pin = newP; 
-      if (!st.checklist) st.checklist = {};
-      st.checklist.pin = true; 
-    });
+  showLoading('Saving PIN...');
+  try {
+    const { error } = await getSupabase().from('users').update({ pin_hash: demoHashPassword(newP) }).eq('id', APP.user.id);
+    if (error) throw error;
     showToast('PIN saved', 'success');
     closePinModal();
-    renderChecklist(); 
-  } else {
-    showLoading('Saving PIN...');
-    try {
-      const { error } = await getSupabase().from('users').update({ pin_hash: demoHashPassword(newP) }).eq('id', APP.user.id);
-      if (error) throw error;
-      showToast('PIN saved', 'success');
-      closePinModal();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
 }
 
@@ -2171,21 +1472,16 @@ async function saveChangePassword() {
   if (err) { showToast(err, 'error'); return; }
   if (newP !== conf) { showToast('Passwords do not match', 'error'); return; }
   
-  if (isDemo()) { 
-    showToast('Demo password update not supported', 'info'); 
-    closeChangePasswordModal(); 
-  } else {
-    showLoading('Updating...');
-    try {
-      const { error } = await getSupabase().auth.updateUser({ password: newP });
-      if (error) throw error;
-      showToast('Password updated', 'success');
-      closeChangePasswordModal();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
+  showLoading('Updating...');
+  try {
+    const { error } = await getSupabase().auth.updateUser({ password: newP });
+    if (error) throw error;
+    showToast('Password updated', 'success');
+    closeChangePasswordModal();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
 }
 
@@ -2196,62 +1492,35 @@ async function confirmDeleteAccount() {
   const v = document.getElementById('deleteConfirmInput').value.trim();
   if (v !== 'DELETE') { showToast('Type DELETE to confirm', 'error'); return; }
   
-  if (isDemo()) {
-    if (!confirm('Delete demo account?')) return;
-    const a = Demo.account();
-    if (a) {
-      const accounts = demoGetAccounts();
-      delete accounts[a.email];
-      demoSetAccounts(accounts);
-    }
-    demoLogout();
-    localStorage.removeItem(STORAGE.MODE);
-    showToast('Account deleted', 'success');
-    setTimeout(() => { window.location.href = 'auth.html'; }, 800);
-  } else {
-    if (!confirm('This will start a 30-day permanent deletion countdown.\n\nYou can request revival before the timer ends. After that, your account and ALL data will be permanently erased.\n\nContinue?')) return;
+  if (!confirm('This will start a 30-day permanent deletion countdown.\n\nYou can request revival before the timer ends. After that, your account and ALL data will be permanently erased.\n\nContinue?')) return;
+  
+  showLoading('Scheduling deletion...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('request-account-deletion', {
+      body: { reason: 'User requested from settings', days: 30 }
+    });
+    if (error || data?.error) throw new Error(data?.error || error?.message);
     
-    showLoading('Scheduling deletion...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke('request-account-deletion', {
-        body: { reason: 'User requested from settings', days: 30 }
-      });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
-      
-      closeDeleteAccountModal();
-      showToast('Account scheduled for deletion. Redirecting...', 'success');
-      setTimeout(() => { window.location.href = 'deletion-pending.html'; }, 1200);
-    } catch (err) {
-      hideLoading();
-      showToast(err.message || 'Failed to submit deletion request', 'error');
-    }
+    closeDeleteAccountModal();
+    showToast('Account scheduled for deletion. Redirecting...', 'success');
+    setTimeout(() => { window.location.href = 'deletion-pending.html'; }, 1200);
+  } catch (err) {
+    hideLoading();
+    showToast(err.message || 'Failed to submit deletion request', 'error');
   }
 }
 
 // ============================================================
-// LANGUAGE (AI translation)
+// LANGUAGE
 // ============================================================
 const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'fr', name: 'Français' },
-  { code: 'es', name: 'Español' },
-  { code: 'pt', name: 'Português' },
-  { code: 'ar', name: 'العربية' },
-  { code: 'sw', name: 'Kiswahili' },
-  { code: 'yo', name: 'Yorùbá' },
-  { code: 'ha', name: 'Hausa' },
-  { code: 'ig', name: 'Igbo' },
-  { code: 'zu', name: 'isiZulu' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'it', name: 'Italiano' },
-  { code: 'nl', name: 'Nederlands' },
-  { code: 'ru', name: 'Русский' },
-  { code: 'zh', name: '中文' },
-  { code: 'hi', name: 'हिन्दी' },
-  { code: 'ja', name: '日本語' },
-  { code: 'ko', name: '한국어' },
-  { code: 'tr', name: 'Türkçe' },
-  { code: 'id', name: 'Bahasa Indonesia' }
+  { code: 'en', name: 'English' }, { code: 'fr', name: 'Français' }, { code: 'es', name: 'Español' },
+  { code: 'pt', name: 'Português' }, { code: 'ar', name: 'العربية' }, { code: 'sw', name: 'Kiswahili' },
+  { code: 'yo', name: 'Yorùbá' }, { code: 'ha', name: 'Hausa' }, { code: 'ig', name: 'Igbo' },
+  { code: 'zu', name: 'isiZulu' }, { code: 'de', name: 'Deutsch' }, { code: 'it', name: 'Italiano' },
+  { code: 'nl', name: 'Nederlands' }, { code: 'ru', name: 'Русский' }, { code: 'zh', name: '中文' },
+  { code: 'hi', name: 'हिन्दी' }, { code: 'ja', name: '日本語' }, { code: 'ko', name: '한국어' },
+  { code: 'tr', name: 'Türkçe' }, { code: 'id', name: 'Bahasa Indonesia' }
 ];
 function languageName(code) {
   const l = LANGUAGES.find(x => x.code === code);
@@ -2290,19 +1559,10 @@ async function loadNotifications() {
   if (!el) return;
   let notifs = [];
   
-  if (isDemo()) {
-    notifs = Demo.state()?.notifications || [];
-  } else {
-    const { data } = await getSupabase().from('notifications').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(50);
-    notifs = (data || []).map(n => ({
-      id: n.id,
-      title: n.title,
-      body: n.body,
-      type: n.type,
-      read: n.read,
-      createdAt: new Date(n.created_at).getTime()
-    }));
-  }
+  const { data } = await getSupabase().from('notifications').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(50);
+  notifs = (data || []).map(n => ({
+    id: n.id, title: n.title, body: n.body, type: n.type, read: n.read, createdAt: new Date(n.created_at).getTime()
+  }));
   
   if (!notifs.length) {
     el.innerHTML = '<div class="empty-state"><span class="material-icons">notifications_none</span><p>No notifications yet</p></div>';
@@ -2322,96 +1582,70 @@ async function loadNotifications() {
 }
 
 async function markNotifRead(id) {
-  if (isDemo()) {
-    Demo.update(s => {
-      const n = (s.notifications || []).find(x => x.id === id);
-      if (n) n.read = true;
-    });
-    updateNotificationBadge();
-    loadNotifications();
-  } else {
-    await getSupabase().from('notifications').update({ read: true }).eq('id', id);
-    loadNotifications();
-  }
+  await getSupabase().from('notifications').update({ read: true }).eq('id', id);
+  loadNotifications();
 }
 
 async function markAllNotificationsRead() {
-  if (isDemo()) {
-    Demo.update(s => { (s.notifications || []).forEach(n => { n.read = true; }); });
-    updateNotificationBadge();
-    loadNotifications();
-    showToast('All read', 'success');
-  } else {
-    await getSupabase().from('notifications').update({ read: true }).eq('user_id', APP.user.id);
-    loadNotifications();
-    showToast('All read', 'success');
-  }
+  await getSupabase().from('notifications').update({ read: true }).eq('user_id', APP.user.id);
+  loadNotifications();
+  showToast('All read', 'success');
 }
 
 // ============================================================
-// REFERRAL
+// REFERRAL (WITH ADMIN SIMULATOR)
 // ============================================================
 function loadReferral() {
-  if (isDemo()) {
-    const a = Demo.account();
-    if (!a) return;
-    const s = a.state;
-    const stage = getStage();
-    const rate = 10 + (stage - 1) * 5;
-    const codeEl = document.getElementById('referralCode');
-    if (codeEl) codeEl.value = a.referralCode || '...';
-    const rateEl = document.getElementById('referralRate');
-    if (rateEl) rateEl.textContent = rate + ' PC';
-    const rate2El = document.getElementById('referralRate2');
-    if (rate2El) rate2El.textContent = rate + ' PC';
-    const cntEl = document.getElementById('referralCount');
-    if (cntEl) cntEl.textContent = String(s.totalReferrals || 0);
-    const coinEl = document.getElementById('referralCoinsEarned');
-    if (coinEl) coinEl.textContent = String(s.referralCoins || 0);
+  const p = APP.profile;
+  if (!p) return;
+  const stage = p.stage || getStage();
+  const rate = 10 + (stage - 1) * 5;
+  const codeEl = document.getElementById('referralCode');
+  if (codeEl) codeEl.value = p.referral_code || '...';
+  const rateEl = document.getElementById('referralRate');
+  if (rateEl) rateEl.textContent = rate + ' PC';
+  const rate2El = document.getElementById('referralRate2');
+  if (rate2El) rate2El.textContent = rate + ' PC';
+  const cntEl = document.getElementById('referralCount');
+  if (cntEl) cntEl.textContent = String(p.total_referrals || 0);
+  const coinEl = document.getElementById('referralCoinsEarned');
+  if (coinEl) coinEl.textContent = '0';
 
-    const container = document.getElementById('section-referral').querySelector('.content-area');
-    if (container && !document.getElementById('simulateRefBtn')) {
-      const btn = document.createElement('button');
-      btn.id = 'simulateRefBtn';
-      btn.className = 'btn-primary';
-      btn.style.cssText = 'width:100%; margin-top:20px; background:#9B59B6;';
-      btn.innerHTML = 'Simulate 3 Referrals (Demo Only)';
-      btn.onclick = simulateReferral;
-      container.appendChild(btn);
-    }
-  } else {
-    if (!APP.profile) return;
-    const stage = APP.profile.stage || getStage();
-    const rate = 10 + (stage - 1) * 5;
-    const codeEl = document.getElementById('referralCode');
-    if (codeEl) codeEl.value = APP.profile.referral_code || '...';
-    const rateEl = document.getElementById('referralRate');
-    if (rateEl) rateEl.textContent = rate + ' PC';
-    const rate2El = document.getElementById('referralRate2');
-    if (rate2El) rate2El.textContent = rate + ' PC';
-    const cntEl = document.getElementById('referralCount');
-    if (cntEl) cntEl.textContent = String(APP.profile.total_referrals || 0);
-    const coinEl = document.getElementById('referralCoinsEarned');
-    if (coinEl) coinEl.textContent = '0';
+  // ADMIN SIMULATION INJECTION (OWNER ONLY)
+  const isAdmin = p.email === 'solforeyx@gmail.com';
+  const container = document.getElementById('section-referral').querySelector('.content-area');
+  
+  if (isAdmin && container && !document.getElementById('adminSimRefBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'adminSimRefBtn';
+    btn.className = 'btn-primary';
+    btn.style.cssText = 'width:100%; margin-top:20px; background:#9B59B6;';
+    btn.innerHTML = '🛠️ Admin: Simulate 10 Referrals';
+    btn.onclick = adminSimulateReferral;
+    container.appendChild(btn);
   }
 }
 
-function simulateReferral() {
-  if (!isDemo()) return showToast('Only available in Demo', 'info');
-  const bonus = Math.floor(Math.random() * 3) + 1;
-  const rate = 10 + (getStage() - 1) * 5;
-  const coinsEarned = bonus * rate;
+async function adminSimulateReferral() {
+  if (APP.profile?.email !== 'solforeyx@gmail.com') return showToast('Not authorized', 'error');
   
-  Demo.update(s => {
-    s.totalReferrals = (s.totalReferrals || 0) + bonus;
-    s.referralCoins = (s.referralCoins || 0) + coinsEarned;
-    s.coins = (s.coins || 0) + coinsEarned;
-  });
-  
-  Demo.notify('New Referral!', `${bonus} user(s) joined using your link! Earned ${coinsEarned} PC.`, 'reward');
-  showToast(`Simulated ${bonus} referrals!`, 'success');
-  loadReferral();
-  updateBalanceUI();
+  showLoading('Simulating referrals...');
+  try {
+    const sb = getSupabase();
+    const current = Number(APP.profile.total_referrals || 0);
+    const newTotal = current + 10;
+    
+    const { error } = await sb.from('users').update({ total_referrals: newTotal }).eq('id', APP.user.id);
+    if (error) throw error;
+
+    await refreshLiveProfile();
+    loadReferral();
+    showToast('Added 10 referrals!', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 function copyReferral() {
@@ -2439,14 +1673,10 @@ async function loadAnnouncements() {
     const sb = getSupabase();
     if (!sb) return;
 
-    const { data, error } = await sb
-      .from('announcements')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data, error } = await sb.from('announcements').select('*').order('created_at', { ascending: false });
       
     if (data && data.length > 0) {
       if (hardcoded) hardcoded.style.display = 'none';
-      
       const dynamicHtml = data.map(a => `
         <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);border-left:4px solid #22C55E;">
           <h3 style="margin-bottom:8px;font-size:16px;font-weight:800;">${escapeHtml(a.title)}</h3>
@@ -2454,12 +1684,9 @@ async function loadAnnouncements() {
           <div style="font-size:11px;color:#999;margin-top:12px;">${formatDate(a.created_at)}</div>
         </div>
       `).join('');
-      
       el.innerHTML = dynamicHtml;
     }
-  } catch (err) {
-    console.error('Error loading announcements', err);
-  }
+  } catch (err) {}
 }
 
 function loadFAQ() {
@@ -2488,11 +1715,7 @@ async function submitContact() {
     formData.append("subject", subject);
     formData.append("message", body);
 
-    const response = await fetch("https://api.web3forms.com/submit", {
-      method: "POST",
-      body: formData
-    });
-
+    const response = await fetch("https://api.web3forms.com/submit", { method: "POST", body: formData });
     const data = await response.json();
 
     if (response.ok && data.success) {
@@ -2512,54 +1735,94 @@ async function submitContact() {
 
 // ============================================================
 // DAILY REWARD
+// ✅ BUG B FIX: fetches claims from daily_reward_claims table and renders calendar
 // ============================================================
 async function loadDailyReward() {
   updateCoinPricesUI();
+  const btn = document.getElementById('claimRewardBtn');
+  
+  const sb = getSupabase();
+  const [profileRes, claimsRes] = await Promise.all([
+    sb.from('users').select('last_daily_claim, created_at').eq('id', APP.user.id).single(),
+    sb.from('daily_reward_claims')
+      .select('claim_date, coins_awarded')
+      .eq('user_id', APP.user.id)
+      .order('claim_date', { ascending: false })
+      .limit(90)
+  ]);
 
-  if (isDemo()) {
-    const s = Demo.state();
-    const dr = s.dailyReward || { lastClaim: '', streak: 0, claimHistory: [] };
-    const today = new Date().toDateString();
-    const claimed = dr.lastClaim === today;
-    const btn = document.getElementById('claimRewardBtn');
-    if (btn) {
-      if (claimed) { btn.disabled = true; btn.textContent = 'Claimed Today'; btn.style.background = '#888'; }
-      else { btn.disabled = false; btn.textContent = 'Claim (20 PC)'; btn.style.background = '#FFD700'; }
-    }
-    const history = dr.claimHistory || [];
-    const dc = document.getElementById('rewardDayCount');
-    if (dc) dc.textContent = String(history.length);
-    const dr2 = document.getElementById('rewardDaysRemaining');
-    if (dr2) dr2.textContent = String(90 - history.length);
-    const st = document.getElementById('rewardStreak');
-    if (st) st.textContent = String(dr.streak || 0);
-    const rt = document.getElementById('rewardTotal');
-    if (rt) rt.textContent = '20';
+  const today = new Date().toISOString().slice(0, 10);
+  const profile = profileRes.data;
+  const claims = claimsRes.data || [];
 
-    renderRewardCalendar(history, s.createdAt || Date.now(), today);
+  if (profile?.last_daily_claim === today) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Claimed Today'; btn.style.background = '#888'; }
   } else {
-    const btn = document.getElementById('claimRewardBtn');
-    const { data: profile } = await getSupabase().from('users').select('last_daily_claim').eq('id', APP.user.id).single();
-    const today = new Date().toISOString().slice(0, 10);
-    
-    if (profile?.last_daily_claim === today) {
-      if (btn) { btn.disabled = true; btn.textContent = 'Claimed Today'; btn.style.background = '#888'; }
-    } else {
-      if (btn) { btn.disabled = false; btn.textContent = 'Claim (20 PC)'; btn.style.background = '#FFD700'; }
-    }
-    document.getElementById('rewardTotal').textContent = '20';
-    document.getElementById('rewardCalendar').innerHTML = '<div style="grid-column:1/-1;text-align:center;font-size:12px;color:#999;">Live history tracked in DB</div>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Claim (20 PC)'; btn.style.background = '#FFD700'; }
   }
+  document.getElementById('rewardTotal').textContent = '20';
+
+  const history = claims.map(c => {
+    const [y, m, d] = c.claim_date.split('-').map(Number);
+    return { date: new Date(y, m - 1, d).toDateString(), amount: c.coins_awarded };
+  });
+
+  const dayCountEl = document.getElementById('rewardDayCount');
+  if (dayCountEl) dayCountEl.textContent = String(history.length);
+  const daysLeftEl = document.getElementById('rewardDaysRemaining');
+  if (daysLeftEl) daysLeftEl.textContent = String(Math.max(0, 90 - history.length));
+
+  const claimedSet = new Set(history.map(h => h.date));
+  let streak = 0;
+  let cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  if (!claimedSet.has(cursor.toDateString())) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  while (claimedSet.has(cursor.toDateString())) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  const streakEl = document.getElementById('rewardStreak');
+  if (streakEl) streakEl.textContent = String(streak);
+
+  const createdAt = new Date(profile?.created_at || Date.now()).getTime();
+  renderRewardCalendar(history, createdAt, new Date().toDateString());
+}
+
+// ✅ BUG B FIX: standalone calendar renderer (no demo state dependencies)
+function renderRewardCalendar(history, createdAt, todayStr) {
+  const container = document.getElementById('rewardCalendar');
+  if (!container) return;
+  const dates = history.map(h => h.date);
+  const start = new Date(createdAt);
+  start.setHours(0, 0, 0, 0);
+  const today = new Date(todayStr);
+  today.setHours(0, 0, 0, 0);
+  let html = '';
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const ds = d.toDateString();
+    const claimed = dates.includes(ds);
+    const future = d > today;
+    const missed = !claimed && !future && d < today;
+    const isToday = ds === todayStr;
+    let bg = '#f0f0f5', color = '#ccc', label = '';
+    if (isToday) { bg = '#FFD700'; color = '#1A1A2E'; label = '•'; }
+    else if (claimed) { bg = '#22C55E'; color = '#fff'; label = '✓'; }
+    else if (missed) { bg = '#FF4444'; color = '#fff'; label = '✕'; }
+    html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;background:${bg};border-radius:4px;color:${color};font-weight:700;">${label}</div>`;
+  }
+  container.innerHTML = html;
 }
 
 function updateCoinPricesUI() {
   const section = document.getElementById('coinPurchaseSection');
   if (!section) return;
-  
   const buttons = section.querySelectorAll('button');
   const coins = [10, 50, 100, 500, 1000];
   const ngn = [100, 500, 1000, 5000, 10000];
-  
   buttons.forEach((btn, index) => {
     if (index < coins.length) {
       btn.innerHTML = `${coins[index]} PC<br/><span style="font-size:10px;">${formatPrice(ngn[index])}</span>`;
@@ -2567,69 +1830,14 @@ function updateCoinPricesUI() {
   });
 }
 
-function renderRewardCalendar(claimHistory, createdAt, todayStr) {
-  const container = document.getElementById('rewardCalendar');
-  if (!container) return;
-  const claimDates = claimHistory.map(h => h.date);
-  const startDate = new Date(createdAt);
-  startDate.setHours(0, 0, 0, 0);
-  const today = new Date(todayStr);
-  today.setHours(0, 0, 0, 0);
-
-  let html = '';
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(startDate);
-    d.setDate(startDate.getDate() + i);
-    const ds = d.toDateString();
-    const isClaimed = claimDates.includes(ds);
-    const isFuture = d > today;
-    const isMissed = !isClaimed && !isFuture && d < today;
-    const isToday = ds === todayStr;
-
-    let bg = '#f0f0f5';
-    let color = '#ccc';
-    let label = '';
-    if (isToday) { bg = '#FFD700'; color = '#1A1A2E'; label = '•'; }
-    else if (isClaimed) { bg = '#22C55E'; color = '#fff'; label = '✓'; }
-    else if (isMissed) { bg = '#FF4444'; color = '#fff'; label = '✕'; }
-
-    html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;background:${bg};border-radius:4px;color:${color};font-weight:700;">${label}</div>`;
-  }
-  container.innerHTML = html;
-}
-
 async function claimDailyReward() {
-  if (isDemo()) {
-    const s = Demo.state();
-    const dr = s.dailyReward || { lastClaim: '', streak: 0, claimHistory: [] };
-    const today = new Date().toDateString();
-    if (dr.lastClaim === today) { showToast('Already claimed', 'info'); return; }
-    const yest = new Date(); yest.setDate(yest.getDate() - 1);
-    const newStreak = dr.lastClaim === yest.toDateString() ? (dr.streak || 0) + 1 : 1;
-
-    Demo.update(st => {
-      st.coins = (st.coins || 0) + 20;
-      st.dailyReward = {
-        lastClaim: today,
-        streak: newStreak,
-        claimHistory: (dr.claimHistory || []).concat([{ date: today, amount: 20 }])
-      };
-      if (st.checklist) st.checklist.reward = true;
-    });
-    Demo.notify('Daily Reward', 'You earned 20 PC', 'reward');
-    showToast('+20 PC!', 'success');
-    playSound('reward');
-    loadDailyReward();
-    updateBalanceUI();
-  } else {
-    showLoading('Claiming...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke('claim-daily-reward');
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      showToast('+20 PC!', 'success'); playSound('reward');
-      await refreshLiveProfile(); loadDailyReward(); updateBalanceUI();
-    } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(); }
-  }
+  showLoading('Claiming...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('claim-daily-reward');
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    showToast('+20 PC!', 'success'); playSound('reward');
+    await refreshLiveProfile(); loadDailyReward(); updateBalanceUI();
+  } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(); }
 }
 
 // ============================================================
@@ -2644,32 +1852,19 @@ async function buyCoins(costNgn, coinsAmount) {
   }
   if (!confirm('Buy ' + coinsAmount + ' PC for ' + formatPrice(costNgn) + '?')) return;
 
-  if (isDemo()) {
-    Demo.update(s => {
-      s.depositBalance -= costNgn;
-      s.coins = (s.coins || 0) + coinsAmount;
-    });
-    Demo.log({ type: 'coin_buy', amount: costNgn, metadata: { coins: coinsAmount } });
-    Demo.notify('Coins Purchased', 'You bought ' + coinsAmount + ' PC', 'info');
-    showToast('+' + coinsAmount + ' PC', 'success');
-    playSound('reward');
+  showLoading('Purchasing...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('buy-coins', { body: { costNgn, coinsAmount } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    await refreshLiveProfile();
     loadDailyReward();
     updateBalanceUI();
-  } else {
-    showLoading('Purchasing...');
-    try {
-      const { data, error } = await getSupabase().functions.invoke('buy-coins', { body: { costNgn, coinsAmount } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
-      await refreshLiveProfile();
-      loadDailyReward();
-      updateBalanceUI();
-      showToast('+' + coinsAmount + ' PC', 'success');
-      playSound('reward');
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      hideLoading();
-    }
+    showToast('+' + coinsAmount + ' PC', 'success');
+    playSound('reward');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
 }
 
@@ -2677,31 +1872,19 @@ async function buyCoins(costNgn, coinsAmount) {
 // WELCOME
 // ============================================================
 function sendWelcomeNotification() {
-  if (isDemo()) {
-    const s = Demo.state();
-    if (!s) return;
-    if (s.welcomeSent) return;
-    Demo.update(st => { st.welcomeSent = true; });
-    Demo.notify(
-      'Welcome to Panda Card',
-      'You are in Demo Mode. Deposit to explore, buy cards, mine, and earn DP. Everything is simulated — no real money at risk.',
-      'info'
-    );
-  } else {
-    const welcomed = localStorage.getItem('pandacard_live_welcome_sent');
-    if (!welcomed) {
-      getSupabase().from('notifications').insert({
-        user_id: APP.user.id,
-        title: 'Welcome to Panda Card!',
-        body: 'Your account is ready. Complete your profile and start trading.',
-        type: 'info',
-        read: false
-      }).then(() => {
-        localStorage.setItem('pandacard_live_welcome_sent', 'true');
-        loadNotifications();
-        updateNotificationBadge();
-      });
-    }
+  const welcomed = localStorage.getItem('pandacard_live_welcome_sent');
+  if (!welcomed) {
+    getSupabase().from('notifications').insert({
+      user_id: APP.user.id,
+      title: 'Welcome to Panda Card!',
+      body: 'Your account is ready. Complete your profile and start trading.',
+      type: 'info',
+      read: false
+    }).then(() => {
+      localStorage.setItem('pandacard_live_welcome_sent', 'true');
+      loadNotifications();
+      updateNotificationBadge();
+    });
   }
 }
 
@@ -2714,13 +1897,7 @@ function updateBalanceUI() {
   let nm = 'User';
   let un = 'user';
 
-  if (isDemo()) {
-    const acc = Demo.account();
-    if (acc) {
-      nm = acc.fullName || 'User';
-      un = acc.username || 'user';
-    }
-  } else if (APP.profile) {
+  if (APP.profile) {
     nm = APP.profile.full_name || 'User';
     un = APP.profile.username || 'user';
   }
@@ -2740,7 +1917,7 @@ function updateBalanceUI() {
 // LIVE PROFILE
 // ============================================================
 async function refreshLiveProfile() {
-  if (isDemo() || !APP.user) return null;
+  if (!APP.user) return null;
   const sb = getSupabase();
   if (!sb) return null;
   
@@ -2785,12 +1962,6 @@ async function loadCards() {
     
     APP.cards = (data || []).filter(c => {
       if (c.is_disappearing) {
-        if (isDemo()) {
-           const app = c.disappear_appears_at;
-           const exp = c.disappear_expires_at;
-           if (!app || !exp) return true;
-           return app <= now && exp > now;
-        }
         return c.disappear_appears_at && 
                c.disappear_appears_at <= now && 
                c.disappear_expires_at > now;
@@ -2799,8 +1970,8 @@ async function loadCards() {
     });
 
     {
-      const userSeed = APP.user?.id || 'demo_seed';
-      const visiblePct = isDemo() ? 50 : 80;
+      const userSeed = APP.user?.id || 'live_seed';
+      const visiblePct = 80;
       APP.cards = APP.cards.filter(c => {
         if (c.is_disappearing) return true;
         const hashString = `${userSeed}-${c.id}`;
@@ -2824,8 +1995,6 @@ async function boot() {
     const sp = document.getElementById('splash');
     if (sp) { sp.style.opacity = '0'; setTimeout(() => sp.style.display = 'none', 600); }
   }, 1500);
-
-  APP.mode = getMode();
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -2868,34 +2037,25 @@ async function boot() {
   if (!user) { window.location.href = 'auth.html'; return; }
   APP.user = user;
 
-  if (isDemo()) {
-    const a = Demo.account();
-    if (!a) { window.location.href = 'auth.html'; return; }
-    APP.profile = a;
-    window.currentUserProfile = {
-      currency: a.currency || 'NGN',
-      name: a.fullName,
-      username: a.username
-    };
-    sendWelcomeNotification();
-    
-    startDemoBotEngine(); 
-    
-  } else {
-    const profile = await refreshLiveProfile();
-    APP.profile = profile;
-    if (profile) {
-      if (profile.deletion_status === 'pending_deletion') {
-        window.location.href = 'deletion-pending.html';
-        return;
-      }
-      window.currentUserProfile = {
-        currency: profile.currency || 'NGN',
-        name: profile.full_name,
-        username: profile.username
-      };
+  const profile = await refreshLiveProfile();
+  APP.profile = profile;
+  
+  if (profile) {
+    if (profile.deletion_status === 'pending_deletion') {
+      window.location.href = 'deletion-pending.html';
+      return;
     }
-    sendWelcomeNotification();
+    window.currentUserProfile = {
+      currency: profile.currency || 'NGN',
+      name: profile.full_name,
+      username: profile.username
+    };
+  }
+  sendWelcomeNotification();
+
+  // SILENT PUSH SYNC FIX
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    subscribeUserToPush(true);
   }
 
   await loadCards();
@@ -2974,5 +2134,4 @@ window.subscribeUserToPush = subscribeUserToPush;
 window.togglePushNotifications = togglePushNotifications;
 window.installPWA = installPWA;
 window.closeInstallModal = closeInstallModal;
-window.simulateReferral = simulateReferral;
 window.claimBonusCard = claimBonusCard;
