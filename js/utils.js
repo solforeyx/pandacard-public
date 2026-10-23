@@ -1,6 +1,6 @@
 // ============================================================
 // PANDA CARD — UTILITIES (FIXED)
-// Dual-source exchange rates + AI translation
+// Dual-source exchange rates + AI translation + Mode Switch
 // ============================================================
 
 // ---------- TOAST ----------
@@ -95,6 +95,21 @@ function playSound(name) {
   }
 }
 function playNotificationSound() { playSound('notification'); }
+
+// ============================================================
+// MODE SWITCHING (Fixed missing function)
+// ============================================================
+function switchAppMode(mode) {
+  if (mode !== 'demo' && mode !== 'live') return;
+  if (getMode() === mode) return;
+  
+  showLoading('Switching mode...');
+  setMode(mode);
+  
+  setTimeout(() => {
+    window.location.reload();
+  }, 500);
+}
 
 // ============================================================
 // CURRENCY — DUAL-SOURCE EXCHANGE RATES
@@ -223,16 +238,13 @@ function getUserCurrency() {
   return 'NGN';
 }
 
-// Cleanly handles 0, null, and undefined values
 function formatPrice(ngnAmount, currency) {
   const c = currency || getUserCurrency();
   const symbol = getCurrencySymbol(c);
   
-  // Force any null, undefined, or invalid numbers to 0
   let amount = Number(ngnAmount);
   if (isNaN(amount) || amount === null || amount === undefined) amount = 0;
   
-  // If the balance is exactly 0, return just "₦0" instead of "₦0.00000000"
   if (amount === 0) return symbol + '0';
 
   const converted = convertPrice(amount, c);
@@ -254,7 +266,7 @@ function formatNumber(n) {
 }
 
 // ============================================================
-// AI TRANSLATION (Free — MyMemory + Chrome native fallback)
+// AI TRANSLATION (Free — MyMemory + Google Translate fallback)
 // ============================================================
 const TRANSLATION_CACHE_PREFIX = 'trans_';
 
@@ -268,11 +280,12 @@ async function translateText(text, targetLang) {
     if (cached) return cached;
   } catch (e) {}
 
+  // Try MyMemory API first
   try {
     const url = 'https://api.mymemory.translated.net/get?q=' +
       encodeURIComponent(text) +
       '&langpair=en|' + encodeURIComponent(targetLang);
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     const data = await res.json();
     const translated = data?.responseData?.translatedText;
     if (translated && !translated.includes('MYMEMORY WARNING')) {
@@ -280,8 +293,23 @@ async function translateText(text, targetLang) {
       return translated;
     }
   } catch (e) {
-    console.warn('translation failed for:', text.slice(0, 30));
+    console.warn('MyMemory failed, trying Google Translate fallback...');
   }
+
+  // Fallback to Google Translate unofficial API
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const data = await res.json();
+    if (data && data[0] && data[0][0] && data[0][0][0]) {
+      const translated = data[0][0][0];
+      try { localStorage.setItem(cacheKey, translated); } catch (e) {}
+      return translated;
+    }
+  } catch (e) {
+    console.warn('Google Translate fallback also failed.');
+  }
+
   return text;
 }
 
@@ -598,6 +626,7 @@ window.getCachedRates = getCachedRates;
 window.setCachedRates = setCachedRates;
 window.translateText = translateText;
 window.translatePageContent = translatePageContent;
+window.switchAppMode = switchAppMode;
 window.getStageConfig = getStageConfig;
 window.getStageName = getStageName;
 window.getStageByEarnings = getStageByEarnings;
