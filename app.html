@@ -619,6 +619,8 @@
     <div style="background:#f0f0f5;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#666;" id="withdrawInfo">Checking...</div>
     <div class="form-group"><label>4-Digit PIN</label><div class="input-wrapper"><span class="material-icons">lock</span><input type="password" id="withdrawPin" placeholder="PIN" maxlength="4" inputmode="numeric" /></div></div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="useBonusCard" onchange="toggleBonusWithdraw()" /> Use bonus card (if available)</label>
+    <!-- ✅ BONUS CARD PICKER CONTAINER (rendered dynamically by toggleBonusWithdraw) -->
+    <div id="bonusCardSelectionContainer"></div>
     <button class="btn-primary" onclick="submitWithdraw()">Request Withdrawal</button>
   </div>
 </div>
@@ -731,10 +733,28 @@
 <script src="https://checkout.flutterwave.com/v3.js"></script>
 
 <!-- App Scripts (Forced Cache Refresh) -->
-<script src="js/config.js?v=7"></script>
-<script src="js/utils.js?v=7"></script>
-<script src="js/auth.js?v=7"></script>
-<script src="js/app.js?v=7"></script>
+<script src="js/config.js?v=8"></script>
+<script src="js/utils.js?v=8"></script>
+<script src="js/auth.js?v=8"></script>
+
+<!-- ✅ DYNAMIC MODE LOADER (Loads demo.js or app.js) -->
+<script>
+  (function() {
+    // Check current mode from localStorage (defaults to demo)
+    const mode = localStorage.getItem('pandacard_mode') || 'demo';
+    const script = document.createElement('script');
+    
+    // Load the correct engine
+    if (mode === 'demo') {
+      script.src = 'js/demo.js?v=8';
+    } else {
+      script.src = 'js/app.js?v=8';
+    }
+    
+    // We use document.write so it loads synchronously and DOMContentLoaded fires properly inside the file
+    document.write(script.outerHTML);
+  })();
+</script>
 
 <!-- ✅ DIRECT SERVICE WORKER REGISTRATION (BYPASSES LOGIN CHECK) -->
 <script>
