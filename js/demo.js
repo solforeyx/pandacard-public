@@ -331,7 +331,7 @@ function renderChecklist() {
   el.innerHTML = `<div class="checklist-card"><div class="checklist-title"><span class="material-icons">checklist</span> Getting Started</div><div class="checklist-sub">Complete these to unlock the full experience</div>${rows.map(r => `<div class="checklist-item ${r.done ? 'done' : ''}" onclick="${r.action}"><span class="check-circle"><span class="material-icons">check</span></span><span class="check-label">${escapeHtml(r.label)}</span></div>`).join('')}</div>`;
 }
 
-// ✅ UPDATED: REAL EVENT-BASED GRAPH FOR DEMO
+// ✅ REAL EVENT-BASED GRAPH FOR DEMO
 function renderPortfolioChart() {
   const canvas = document.getElementById('portfolioChart');
   const chartInner = document.getElementById('chartInner');
@@ -347,7 +347,7 @@ function renderPortfolioChart() {
   let runningTotal = 0;
 
   txs.forEach(tx => {
-    const cardId = tx.cardId || tx.listingId; // approximate
+    const cardId = tx.cardId || tx.listingId;
     const card = APP.cards.find(c => c.id === cardId);
     const val = card ? (card.current_price || card.original_price || 0) : (tx.amount || 0);
 
@@ -373,7 +373,6 @@ function renderPortfolioChart() {
     events.push({ time: Date.now(), total: currentTotal, type: 'init' });
   }
 
-  // Filter by APP.portfolioDays
   const cutoff = Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000);
   const filteredEvents = events.filter(e => e.time >= cutoff);
   
@@ -431,7 +430,6 @@ function renderMarketplaceGrid() {
   if (!APP.cards.length) { grid.innerHTML = '<div class="empty-state"><span class="material-icons">inventory_2</span><p>No cards available</p></div>'; return; }
   const inv = getInventory();
   
-  // ✅ UPDATED: Group Hot/Neutral/Cold into one
   const grouped = { disappearing: [], bonus: [], vip: [], standard: [], newly: [] };
   
   let dSeen = 0;
@@ -443,7 +441,6 @@ function renderMarketplaceGrid() {
     else grouped.standard.push(c);
   });
 
-  // Sort standard: Hot -> Neutral -> Cold
   grouped.standard.sort((a, b) => {
     const order = { hot: 1, neutral: 2, cold: 3 };
     return (order[a.status] || 2) - (order[b.status] || 2);
@@ -497,7 +494,6 @@ function renderCardTile(card, inv) {
   const owned = qty > 0 ? '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>' : '';
   
   let timerHtml = '';
-  // ✅ REMOVED timer for disappearing cards in inventory. Only show if NOT owned.
   if (card.is_disappearing && card.disappear_expires_at && qty === 0) {
     const diff = new Date(card.disappear_expires_at).getTime() - Date.now();
     if (diff > 0) { const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000); timerHtml = `<div style="position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.8); color:#fff; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; z-index:2;">⏱ ${h}h ${m}m</div>`; }
@@ -607,7 +603,8 @@ function openSellModal(cardId) {
   if (card.is_bonus || card.is_disappearing) { showToast('This card cannot be sold', 'error'); return; }
   const b = getBalances();
   const floor = card.original_price || card.current_price || 0;
-  const ceil = floor * 10;
+  // ✅ FIXED: Use the inventory's specific ceiling price if it exists
+  const ceil = inv[cardId]?.ceiling_price || (floor * 10);
   const suggested = card.current_price || floor;
   document.getElementById('sellTitle').textContent = 'Sell ' + card.name;
   document.getElementById('sellBody').innerHTML = `
@@ -626,7 +623,10 @@ function confirmSell(cardId) {
   const price = parseFloat(document.getElementById('sellPriceInput').value);
   const card = APP.cards.find(c => c.id === cardId); if (!card) return;
   const floor = card.original_price || card.current_price || 0;
-  const ceil = floor * 10;
+  
+  const inv = getInventory();
+  const ceil = inv[cardId]?.ceiling_price || (floor * 10);
+
   if (!price || price < floor || price > ceil) { showToast('Price must be between ' + formatPrice(floor) + ' and ' + formatPrice(ceil), 'error'); return; }
   if (getBalances().coins < 20) { showToast('Need 20 PC', 'error'); return; }
   Demo.update(s => {
@@ -895,13 +895,17 @@ function startMining() {
 function tapMiningSlot() { /* handled in renderMiningUI */ }
 
 // ============================================================
-// DAILY COMBO (SAT/SUN SCREENS)
+// DAILY COMBO (SAT/SUN SCREENS & NEW USER LOGIC)
 // ============================================================
 function loadDailyCombo() {
   const day = new Date().getDay();
   const weekdayScreen = document.getElementById('comboWeekdayScreen');
   const satScreen = document.getElementById('comboSaturdayScreen');
   const sunScreen = document.getElementById('comboSundayScreen');
+
+  // ✅ NEW USER CHECK
+  const createdAt = new Date(Demo.account()?.createdAt || 0);
+  const isNewUser = (Date.now() - createdAt.getTime()) < (24 * 60 * 60 * 1000);
   
   if (day === 0) { // Sunday
     weekdayScreen.style.display = 'none';
@@ -915,6 +919,17 @@ function loadDailyCombo() {
     satScreen.style.display = 'block';
     sunScreen.style.display = 'none';
     
+    if (isNewUser) {
+      document.getElementById('saturdayStreakSlots').innerHTML = `<div style="text-align:center; width:100%; color:#666; font-size:14px;">You just joined!</div>`;
+      document.getElementById('saturdayRewardAction').innerHTML = `
+        <div style="text-align:center; padding:20px;">
+          <h3 style="color:#FFD700; font-size:20px; font-weight:800; margin-bottom:8px;">Happy Saturday!</h3>
+          <p style="color:#666; font-size:14px;">Your daily combos will start on Monday.</p>
+        </div>
+      `;
+      return;
+    }
+
     const streak = Demo.state()?.comboStreak || 0;
     let slotsHtml = '';
     for (let i = 0; i < 5; i++) {
@@ -938,6 +953,18 @@ function loadDailyCombo() {
   weekdayScreen.style.display = 'block';
   satScreen.style.display = 'none';
   sunScreen.style.display = 'none';
+
+  if (isNewUser) {
+    document.getElementById('comboCardArea').innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons" style="font-size:48px; color:#FFD700; margin-bottom:12px;">wb_sunny</span>
+        <h3 style="margin-bottom:8px; color:#1A1A2E;">Account is new!</h3>
+        <p style="color:#666; font-size:13px;">Your Daily Combo starts tomorrow. Get ready!</p>
+      </div>`;
+    document.getElementById('comboActionArea').innerHTML = '';
+    document.getElementById('comboProgress').innerHTML = '';
+    return;
+  }
 
   const s = Demo.state();
   const today = new Date().toDateString();
@@ -1018,7 +1045,7 @@ function useDisappearingForStreak() {
   Demo.update(st => {
     st.inventory[dId].quantity--;
     if (st.inventory[dId].quantity <= 0) delete st.inventory[dId];
-    st.comboStreak = (st.comboStreak || 0) + 1; // artificially increase streak for demo
+    st.comboStreak = (st.comboStreak || 0) + 1;
   });
   showToast('Streak covered!', 'success');
   playSound('reward');
@@ -1029,7 +1056,7 @@ function claimSaturdayReward() {
   Demo.update(st => {
     st.diamondPoints = (st.diamondPoints || 0) + 40;
     st.dpToday = (st.dpToday || 0) + 40;
-    st.comboStreak = 0; // Reset streak after claiming
+    st.comboStreak = 0;
   });
   Demo.notify('Week Reward', 'You claimed your +40 DP bonus!', 'reward');
   showToast('+40 DP Claimed!', 'success');
@@ -1054,7 +1081,6 @@ function loadWallet() {
   const elS = document.getElementById('walletStage'); if (elS) elS.textContent = getStageConfig(getStage()).name;
   renderBankDetails();
   renderWalletHistory();
-  // Note: Simulate Deposit button removed from here
 }
 
 function renderBankDetails() {
@@ -1242,13 +1268,11 @@ function loadSettings() {
   const helper = document.getElementById('modeHelperText');
   if (helper) helper.textContent = 'Demo mode: local data only';
   
-  // ✅ FIXED: Show "Set PIN" or "Change PIN"
   const pinLabel = document.getElementById('pinSettingsLabel');
   if (pinLabel) {
     pinLabel.textContent = Demo.state()?.pin ? 'Change PIN' : 'Set PIN';
   }
 
-  // ✅ FIXED: Mode switch UI update
   const mode = localStorage.getItem('pandacard_mode') || 'demo';
   const btnDemo = document.getElementById('modeBtnDemo');
   const btnLive = document.getElementById('modeBtnLive');
@@ -1399,7 +1423,6 @@ function shareReferral() {
 // ANNOUNCEMENTS / FAQ / CONTACT
 // ============================================================
 function loadAnnouncements() { 
-  /* live announcement HTML stays */ 
   const hardcoded = document.getElementById('hardcodedAnnouncement');
   if (hardcoded) hardcoded.style.display = 'block';
 }
@@ -1603,7 +1626,22 @@ async function boot() {
     const sb = getSupabase();
     if (sb) {
       const { data } = await sb.from('cards').select('*').eq('is_active', true).order('name');
-      APP.cards = (data || []).filter(c => {
+      
+      // ✅ 24-HOUR FAILSAFE: If a card is 'newly' but older than 24h, force it to its proper status
+      APP.cards = (data || []).map(c => {
+        if (c.status === 'newly' && c.created_at) {
+          const hoursSinceCreated = (Date.now() - new Date(c.created_at).getTime()) / 3600000;
+          if (hoursSinceCreated > 24) {
+            let newStatus = 'neutral';
+            if (c.demand_score >= 70) newStatus = 'hot';
+            else if (c.demand_score <= 30) newStatus = 'cold';
+            return { ...c, status: newStatus };
+          }
+        }
+        return c;
+      });
+
+      APP.cards = APP.cards.filter(c => {
         if (c.is_disappearing) {
           const now = new Date().toISOString();
           return c.disappear_appears_at && c.disappear_appears_at <= now && c.disappear_expires_at > now;
