@@ -382,7 +382,6 @@ function renderChecklist() {
   `;
 }
 
-// ✅ UPDATED: REAL EVENT-BASED GRAPH
 async function renderPortfolioChart() {
   const canvas = document.getElementById('portfolioChart');
   const chartInner = document.getElementById('chartInner');
@@ -392,7 +391,6 @@ async function renderPortfolioChart() {
   const ctx = canvas.getContext('2d');
   if (APP.portfolioChart) { try { APP.portfolioChart.destroy(); } catch (e) {} }
 
-  // Fetch transaction history to build the graph
   const { data: txs } = await getSupabase().from('transactions')
     .select('*')
     .eq('user_id', APP.user.id)
@@ -401,7 +399,6 @@ async function renderPortfolioChart() {
   const events = [];
   let runningTotal = 0;
 
-  // Filter and calculate
   (txs || []).forEach(tx => {
     const cardId = tx.card_id || (tx.metadata && tx.metadata.card_id);
     const card = APP.cards.find(c => c.id === cardId);
@@ -411,13 +408,11 @@ async function renderPortfolioChart() {
       runningTotal += val;
       events.push({ time: new Date(tx.created_at).getTime(), total: runningTotal, type: tx.type, val: val });
     } else if (tx.type === 'trade_sell' || tx.type === 'mining_reward' || tx.type === 'daily_combo' || tx.type === 'listing_create') {
-      // Note: listing_create doesn't reduce portfolio value unless the card leaves inventory, but for simplicity, we deduct.
       runningTotal = Math.max(0, runningTotal - val);
       events.push({ time: new Date(tx.created_at).getTime(), total: runningTotal, type: tx.type, val: -val });
     }
   });
 
-  // Get current total to ensure we match exact portfolio
   const inv = getInventory();
   let currentTotal = 0;
   Object.keys(inv).forEach(id => {
@@ -425,19 +420,17 @@ async function renderPortfolioChart() {
     if (c) currentTotal += (c.current_price || c.original_price || 0) * (inv[id]?.quantity || 0);
   });
   
-  // If currentTotal doesn't match events end, add an adjustment event
   if (events.length > 0 && events[events.length-1].total !== currentTotal) {
     events.push({ time: Date.now(), total: currentTotal, type: 'adjustment', val: currentTotal - events[events.length-1].total });
   } else if (events.length === 0 && currentTotal > 0) {
     events.push({ time: Date.now(), total: currentTotal, type: 'init', val: currentTotal });
   }
 
-  // Filter by APP.portfolioDays
   const cutoff = Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000);
   const filteredEvents = events.filter(e => e.time >= cutoff);
   
   const labels = [new Date(cutoff).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })];
-  const data = [0]; // Start at 0 for the cut-off date
+  const data = [0];
   
   filteredEvents.forEach(e => {
     labels.push(new Date(e.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -457,7 +450,6 @@ async function renderPortfolioChart() {
     }
   }
 
-  // Set width for horizontal scroll
   if (chartInner) {
     chartInner.style.width = Math.max(650, (data.length + 1) * 75) + 'px';
   }
@@ -484,7 +476,6 @@ async function renderPortfolioChart() {
     }
   });
 
-  // Auto scroll to end
   setTimeout(() => {
     if (chartScroll) chartScroll.scrollLeft = chartScroll.scrollWidth;
   }, 100);
@@ -518,7 +509,6 @@ function renderMarketplaceGrid() {
   }
 
   const inv = getInventory();
-  // ✅ UPDATED: Group Hot/Neutral/Cold into one
   const grouped = { disappearing: [], bonus: [], vip: [], standard: [], newly: [] };
   
   let disappearingSeen = 0;
@@ -533,7 +523,6 @@ function renderMarketplaceGrid() {
     else grouped.standard.push(c);
   });
 
-  // Sort standard: Hot -> Neutral -> Cold
   grouped.standard.sort((a, b) => {
     const order = { hot: 1, neutral: 2, cold: 3 };
     return (order[a.status] || 2) - (order[b.status] || 2);
@@ -571,7 +560,6 @@ function renderDashInventory() {
     return;
   }
   
-  // HTML already changed to card-scroll-row in app.html
   grid.innerHTML = ids.slice(0, 9).map(id => {
     const c = APP.cards.find(x => x.id === id);
     return c ? renderCardTile(c, inv) : '';
@@ -599,7 +587,6 @@ function renderCardTile(card, inv) {
   const owned = qty > 0 ? '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>' : '';
 
   let timerHtml = '';
-  // ✅ REMOVED timer for disappearing cards in inventory. Only show if NOT owned.
   if (card.is_disappearing && card.disappear_expires_at && qty === 0) {
     const expires = new Date(card.disappear_expires_at).getTime();
     const diff = expires - Date.now();
@@ -785,14 +772,16 @@ function openSellModal(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
   if (!card) return;
   const inv = getInventory();
-  const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+  const invItem = inv[cardId];
+  const qty = invItem?.quantity !== undefined ? invItem.quantity : (invItem || 0);
+  
   if (qty <= 0) { showToast('You do not own this card', 'error'); return; }
   if (card.is_bonus || card.is_disappearing) { showToast('This card cannot be sold', 'error'); return; }
 
   playSound('click');
   const b = getBalances();
   const floor = card.original_price || card.current_price || 0;
-  const ceiling = floor * 10;
+  const ceiling = invItem?.ceiling_price || (floor * 10);
   const suggestedPrice = card.current_price || floor;
 
   document.getElementById('sellTitle').textContent = 'Sell ' + card.name;
@@ -825,7 +814,10 @@ async function confirmSell(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
   if (!card) return;
   const floor = card.original_price || card.current_price || 0;
-  const ceiling = floor * 10;
+  
+  const inv = getInventory();
+  const invItem = inv[cardId];
+  const ceiling = invItem?.ceiling_price || (floor * 10);
 
   if (!price || price < floor || price > ceiling) {
     showToast('Price must be between ' + formatPrice(floor) + ' and ' + formatPrice(ceiling), 'error');
@@ -838,8 +830,7 @@ async function confirmSell(cardId) {
     return;
   }
 
-  const inv = getInventory();
-  const qty = inv[cardId]?.quantity !== undefined ? inv[cardId].quantity : (inv[cardId] || 0);
+  const qty = invItem?.quantity !== undefined ? invItem.quantity : (invItem || 0);
   if (qty <= 0) { showToast('You do not own this card', 'error'); return; }
 
   showLoading('Creating listing...');
@@ -899,7 +890,6 @@ async function renderTradeBuyListings() {
   const { data } = await getSupabase().from('listings').select('*').eq('status', 'active').gt('remaining', 0);
   listings = data || [];
 
-  // ✅ FIXED: Filter out my own listings entirely from the BUY tab
   listings = listings.filter(l => l.status === 'active' && l.remaining > 0 && (l.sellerId || l.seller_id) !== myId);
   const inv = getInventory();
 
@@ -1018,7 +1008,6 @@ function renderInventoryFull() {
   const cnt = document.getElementById('inventoryCount');
   if (cnt) cnt.textContent = ids.length + ' cards';
   
-  // HTML already changed to card-scroll-row in app.html
   grid.innerHTML = ids.map(id => {
     const c = APP.cards.find(x => x.id === id);
     return c ? renderCardTile(c, inv) : '';
@@ -1031,7 +1020,7 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING (NEW LOGIC)
+// MINING
 // ============================================================
 async function loadMining() {
   const sb = getSupabase();
@@ -1143,13 +1132,17 @@ async function startMining() {
 }
 
 // ============================================================
-// DAILY COMBO (SAT/SUN SCREENS)
+// DAILY COMBO (SAT/SUN SCREENS & NEW USER LOGIC)
 // ============================================================
 async function loadDailyCombo() {
   const day = new Date().getDay();
   const weekdayScreen = document.getElementById('comboWeekdayScreen');
   const satScreen = document.getElementById('comboSaturdayScreen');
   const sunScreen = document.getElementById('comboSundayScreen');
+
+  // ✅ NEW USER CHECK
+  const createdAt = new Date(APP.profile?.created_at || 0);
+  const isNewUser = (Date.now() - createdAt.getTime()) < (24 * 60 * 60 * 1000);
   
   if (day === 0) { // Sunday
     weekdayScreen.style.display = 'none';
@@ -1163,6 +1156,17 @@ async function loadDailyCombo() {
     satScreen.style.display = 'block';
     sunScreen.style.display = 'none';
     
+    if (isNewUser) {
+      document.getElementById('saturdayStreakSlots').innerHTML = `<div style="text-align:center; width:100%; color:#666; font-size:14px;">You just joined!</div>`;
+      document.getElementById('saturdayRewardAction').innerHTML = `
+        <div style="text-align:center; padding:20px;">
+          <h3 style="color:#FFD700; font-size:20px; font-weight:800; margin-bottom:8px;">Happy Saturday!</h3>
+          <p style="color:#666; font-size:14px;">Your daily combos will start on Monday.</p>
+        </div>
+      `;
+      return;
+    }
+
     // Fetch last 5 days combos
     const today = new Date();
     const fiveDaysAgo = new Date(today); fiveDaysAgo.setDate(today.getDate() - 5);
@@ -1196,6 +1200,18 @@ async function loadDailyCombo() {
   weekdayScreen.style.display = 'block';
   satScreen.style.display = 'none';
   sunScreen.style.display = 'none';
+
+  if (isNewUser) {
+    document.getElementById('comboCardArea').innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons" style="font-size:48px; color:#FFD700; margin-bottom:12px;">wb_sunny</span>
+        <h3 style="margin-bottom:8px; color:#1A1A2E;">Account is new!</h3>
+        <p style="color:#666; font-size:13px;">Your Daily Combo starts tomorrow. Get ready!</p>
+      </div>`;
+    document.getElementById('comboActionArea').innerHTML = '';
+    document.getElementById('comboProgress').innerHTML = '';
+    return;
+  }
 
   const sb = getSupabase();
   if (!sb) return;
@@ -1250,6 +1266,29 @@ async function completeDailyCombo(comboId) {
     playSound('reward');
     await refreshLiveProfile();
     loadDailyCombo();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ✅ NEW FIX: Use Disappearing Card to fill all missing days on Saturday
+async function useDisappearingForStreak() {
+  if (!confirm('Use 1 Disappearing Card to fill ALL missing days? It will be consumed.')) return;
+  
+  showLoading('Applying card...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke(
+      'daily-combo?action=fix-streak',
+      { body: {} }
+    );
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    
+    showToast('All missing days filled!', 'success');
+    playSound('reward');
+    await refreshLiveProfile();
+    loadDailyCombo(); // Reload to show all green
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -1633,7 +1672,8 @@ async function savePin() {
   
   showLoading('Saving PIN...');
   try {
-    const { error } = await getSupabase().from('users').update({ pin_hash: demoHashPassword(newP) }).eq('id', APP.user.id);
+    // ✅ FIXED: Use the new RPC to bypass the trigger
+    const { error } = await getSupabase().rpc('update_user_pin', { p_pin_hash: demoHashPassword(newP) });
     if (error) throw error;
     await refreshLiveProfile(); // Refresh to update UI
     showToast('PIN saved', 'success');
@@ -1732,7 +1772,7 @@ async function setLanguage(code) {
   closeLanguageModal();
   if (code === 'en') { showToast('English set', 'success'); return; }
   showToast('Translating...', 'info');
-  await translatePageContent(code); // Note: Assuming this is in utils.js or config.js
+  await translatePageContent(code); 
   showToast('Language set to ' + languageName(code), 'success');
 }
 
@@ -2116,7 +2156,8 @@ async function refreshLiveProfile() {
   const sb = getSupabase();
   if (!sb) return null;
   
-  const { data, error } = await sb.from('users').select('*, inventory(card_id, quantity, marketplace_quantity, trade_quantity)').eq('id', APP.user.id).single();
+  // ✅ FIXED: Added ceiling_price to the select query
+  const { data, error } = await sb.from('users').select('*, inventory(card_id, quantity, marketplace_quantity, trade_quantity, ceiling_price)').eq('id', APP.user.id).single();
   
   if (data) {
     const formattedInv = {};
@@ -2126,7 +2167,8 @@ async function refreshLiveProfile() {
           formattedInv[i.card_id] = {
             quantity: i.quantity,
             marketplace_quantity: i.marketplace_quantity || 0,
-            trade_quantity: i.trade_quantity || 0
+            trade_quantity: i.trade_quantity || 0,
+            ceiling_price: i.ceiling_price // ✅ Added
           };
         }
       });
@@ -2155,7 +2197,21 @@ async function loadCards() {
     
     const now = new Date().toISOString();
     
-    APP.cards = (data || []).filter(c => {
+    // ✅ 24-HOUR FAILSAFE: If a card is 'newly' but older than 24h, force it to its proper status
+    APP.cards = (data || []).map(c => {
+      if (c.status === 'newly' && c.created_at) {
+        const hoursSinceCreated = (Date.now() - new Date(c.created_at).getTime()) / 3600000;
+        if (hoursSinceCreated > 24) {
+          let newStatus = 'neutral';
+          if (c.demand_score >= 70) newStatus = 'hot';
+          else if (c.demand_score <= 30) newStatus = 'cold';
+          return { ...c, status: newStatus };
+        }
+      }
+      return c;
+    });
+
+    APP.cards = APP.cards.filter(c => {
       if (c.is_disappearing) {
         return c.disappear_appears_at && 
                c.disappear_appears_at <= now && 
@@ -2164,7 +2220,6 @@ async function loadCards() {
       return true; 
     });
 
-    // ✅ FIXED: Shuffle daily by including YYYY-MM-DD in the seed
     {
       const todayStr = new Date().toISOString().slice(0, 10);
       const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
@@ -2202,7 +2257,7 @@ function checkMidnightReset() {
       if (document.getElementById('section-combo').classList.contains('active')) loadDailyCombo();
       if (resetScreen) resetScreen.style.display = 'none';
       showToast('Your new day is ready!', 'success');
-    }, 3000); // Wait 3 seconds to simulate server sync
+    }, 3000); 
     return true;
   }
   return false;
@@ -2278,7 +2333,6 @@ async function boot() {
     subscribeUserToPush(true);
   }
 
-  // Check Midnight Reset
   const isResetting = checkMidnightReset();
   if (!isResetting) {
     await loadCards();
@@ -2318,6 +2372,7 @@ window.confirmSell = confirmSell;
 window.tapMiningSlot = tapMiningSlot;
 window.startMining = startMining;
 window.completeDailyCombo = completeDailyCombo;
+window.useDisappearingForStreak = useDisappearingForStreak; // ✅ ADDED EXPORT
 window.openDepositModal = openDepositModal;
 window.closeDepositModal = closeDepositModal;
 window.selectPaymentMethod = selectPaymentMethod;
