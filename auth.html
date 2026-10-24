@@ -615,7 +615,7 @@
       </div>
       <div class="modal-buttons">
         <button class="btn-back" onclick="closeReview()">Go Back</button>
-        <button class="btn-confirm" onclick="confirmSignup()">Confirm &amp; Create</button>
+        <button class="btn-confirm" id="confirmCreateBtn" onclick="confirmSignup()">Confirm &amp; Create</button>
       </div>
     </div>
   </div>
@@ -1058,7 +1058,7 @@
     const signupForm = document.getElementById('signupForm');
     if (signupForm) {
       signupForm.addEventListener('submit', function (e) {
-        e.preventDefault();
+        e.preventDefault(); // Prevents submission!
         clearAllErrors();
 
         const name = document.getElementById('signupName').value.trim();
@@ -1091,7 +1091,7 @@
 
         if (!ok) return;
 
-        // show review modal
+        // Store details for the popup
         pendingSignup = {
           fullName: name,
           email: email,
@@ -1106,6 +1106,7 @@
           referredBy: referral || null
         };
 
+        // Populate and show review modal
         document.getElementById('reviewName').textContent = name;
         document.getElementById('reviewUsername').textContent = '@' + username;
         document.getElementById('reviewCountry').textContent = countryName;
@@ -1132,6 +1133,10 @@
     async function confirmSignup() {
       if (!pendingSignup) return;
 
+      // Prevent double-submitting
+      const confirmBtn = document.getElementById('confirmCreateBtn');
+      if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerHTML = 'Creating...'; }
+
       document.getElementById('reviewModal').classList.remove('open');
       showLoading('Creating account...');
 
@@ -1144,10 +1149,12 @@
           showToast(result.error, 'error');
           playSound('error');
           
-          // 🚨 FIX: If they somehow get a duplicate key, tell them to log in
+          // If they somehow get a duplicate key, tell them to log in
           if (result.error.toLowerCase().includes('duplicate') || result.error.toLowerCase().includes('already')) {
             setTimeout(() => switchTab('login'), 1500);
           }
+          
+          if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = 'Confirm &amp; Create'; }
           return;
         }
 
@@ -1160,6 +1167,7 @@
               hideLoading();
               showToast('Account created. Please check your email to verify before logging in.', 'success');
               switchTab('login');
+              if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = 'Confirm &amp; Create'; }
               return;
             }
           }
@@ -1173,6 +1181,7 @@
         hideLoading();
         showToast(err.message || 'Something went wrong', 'error');
         playSound('error');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = 'Confirm &amp; Create'; }
       } finally {
         pendingSignup = null;
       }
@@ -1289,7 +1298,6 @@
           showToast(error.message, 'error');
           return;
         }
-        // OAuth redirects away — hideLoading will trigger if user comes back
       } catch (err) {
         hideLoading();
         showToast(err.message || 'Google sign-in failed', 'error');
@@ -1311,7 +1319,6 @@
         const { data: profile, error } = await sb.from('users').select('*').eq('id', user.id).single();
 
         if (error || !profile) {
-          // Profile missing — show completion modal
           pendingGoogleUser = user;
           document.getElementById('profileModal').classList.add('open');
           return;
@@ -1323,7 +1330,6 @@
           return;
         }
 
-        // Complete profile — go to app
         window.location.href = 'app.html';
       } catch (e) { /* ignore */ }
     }
@@ -1401,7 +1407,6 @@
     // ============================================================
     document.addEventListener('DOMContentLoaded', function () {
       init().then(function () {
-        // after init, check if returning from Google OAuth
         setTimeout(checkGoogleReturn, 500);
       });
     });
