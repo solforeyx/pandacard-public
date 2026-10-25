@@ -382,15 +382,57 @@ function renderChecklist() {
   `;
 }
 
+// ============================================================
+// THE NEW GRAPH LOGIC (MATCHING SAMPLE)
+// ============================================================
+let chartInstance = null;
+let currentColourStage = 2; // Start at Yellow
+
+const COLOURS = [
+    { name: "Red",    hex: "#ff4d5a" },
+    { name: "Orange", hex: "#ff963d" },
+    { name: "Yellow", hex: "#ffd54f" },
+    { name: "Lemon",  hex: "#dfff00" },
+    { name: "Green",  hex: "#29d391" }
+];
+
+const ICONS = {
+    start: "circle-dot",
+    card_purchase: "shopping-cart",
+    card_sale: "tag",
+    someone_bought_card: "hand-coins",
+    coin_purchase: "coins",
+    someone_bought_coins: "wallet",
+    mining: "pickaxe",
+    daily_combo: "gem",
+    value_decrease: "trending-down"
+};
+
+const ICON_COLORS = {
+    start: "#ffd54f",
+    card_purchase: "#29d391",
+    card_sale: "#ff6378",
+    someone_bought_card: "#65a8ff",
+    coin_purchase: "#ffd54f",
+    someone_bought_coins: "#bb91ff",
+    mining: "#65a8ff",
+    daily_combo: "#ffc857",
+    value_decrease: "#ff6378"
+};
+
 async function renderPortfolioChart() {
   const canvas = document.getElementById('portfolioChart');
   const chartInner = document.getElementById('chartInner');
   const chartScroll = document.getElementById('chartScroll');
+  const markerLayer = document.getElementById('markerLayer');
+  
   if (!canvas || typeof Chart === 'undefined') return;
   
   const ctx = canvas.getContext('2d');
-  if (APP.portfolioChart) { try { APP.portfolioChart.destroy(); } catch (e) {} }
+  if (chartInstance) { try { chartInstance.destroy(); } catch (e) {} }
+  if (markerLayer) markerLayer.innerHTML = '';
 
+  // 1. Fetch all transactions
   const { data: txs } = await getSupabase().from('transactions')
     .select('*')
     .eq('user_id', APP.user.id)
@@ -398,21 +440,78 @@ async function renderPortfolioChart() {
 
   const events = [];
   let runningTotal = 0;
+  currentColourStage = 2; // Reset stage for full render
+
+  // Initial state
+  events.push({
+    id: 0,
+    type: 'start',
+    title: 'Starting Inventory',
+    shortLabel: 'Start',
+    assetName: 'Inventory',
+    quantityLabel: 'Starting point',
+    transactionAmount: 0,
+    change: 0,
+    before: 0,
+    after: 0,
+    colourStage: 2,
+    time: new Date(Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000))
+  });
 
   (txs || []).forEach(tx => {
+    let type = 'adjustment';
+    let change = 0;
+    let title = '';
+    
     const cardId = tx.card_id || (tx.metadata && tx.metadata.card_id);
     const card = APP.cards.find(c => c.id === cardId);
     const val = card ? (card.current_price || card.original_price || 0) : (tx.amount || 0);
 
     if (tx.type === 'marketplace_buy' || tx.type === 'trade_buy') {
-      runningTotal += val;
-      events.push({ time: new Date(tx.created_at).getTime(), total: runningTotal, type: tx.type, val: val });
-    } else if (tx.type === 'trade_sell' || tx.type === 'mining_reward' || tx.type === 'daily_combo' || tx.type === 'listing_create') {
-      runningTotal = Math.max(0, runningTotal - val);
-      events.push({ time: new Date(tx.created_at).getTime(), total: runningTotal, type: tx.type, val: -val });
+      type = 'card_purchase';
+      change = val;
+      title = 'Card Purchased';
+    } else if (tx.type === 'trade_sell') {
+      type = 'someone_bought_card';
+      change = -val;
+      title = 'Someone Bought My Card';
+    } else if (tx.type === 'mining_reward') {
+      type = 'mining';
+      change = -val;
+      title = 'Card Used for Mining';
+    } else if (tx.type === 'daily_combo') {
+      type = 'daily_combo';
+      change = -val;
+      title = 'Card Used for Daily Combo';
+    } else if (tx.type === 'coin_buy') {
+      type = 'coin_purchase';
+      change = 0; // Does not affect inventory value
+      title = 'Coins Purchased';
     }
+
+    if (change > 0) currentColourStage = Math.min(4, currentColourStage + 1);
+    else if (change < 0) currentColourStage = Math.max(0, currentColourStage - 1);
+
+    const before = runningTotal;
+    runningTotal = Math.max(0, runningTotal + change);
+
+    events.push({
+      id: tx.id,
+      type,
+      title,
+      shortLabel: title,
+      assetName: card ? card.name : 'Card',
+      quantityLabel: '1 item',
+      transactionAmount: val,
+      change: change,
+      before: before,
+      after: runningTotal,
+      colourStage: currentColourStage,
+      time: new Date(tx.created_at)
+    });
   });
 
+  // Adjust for current actual total
   const inv = getInventory();
   let currentTotal = 0;
   Object.keys(inv).forEach(id => {
@@ -420,50 +519,75 @@ async function renderPortfolioChart() {
     if (c) currentTotal += (c.current_price || c.original_price || 0) * (inv[id]?.quantity || 0);
   });
   
-  if (events.length > 0 && events[events.length-1].total !== currentTotal) {
-    events.push({ time: Date.now(), total: currentTotal, type: 'adjustment', val: currentTotal - events[events.length-1].total });
-  } else if (events.length === 0 && currentTotal > 0) {
-    events.push({ time: Date.now(), total: currentTotal, type: 'init', val: currentTotal });
+  if (events.length > 0 && events[events.length-1].after !== currentTotal) {
+      const diff = currentTotal - events[events.length-1].after;
+      if (diff > 0) currentColourStage = Math.min(4, currentColourStage + 1);
+      else if (diff < 0) currentColourStage = Math.max(0, currentColourStage - 1);
+      
+      events.push({
+          id: 'adj',
+          type: 'adjustment',
+          title: 'Inventory Adjustment',
+          shortLabel: 'Adjustment',
+          assetName: 'Manual',
+          quantityLabel: 'Balance fix',
+          transactionAmount: Math.abs(diff),
+          change: diff,
+          before: events[events.length-1].after,
+          after: currentTotal,
+          colourStage: currentColourStage,
+          time: new Date()
+      });
   }
 
+  // Filter by days
   const cutoff = Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000);
-  const filteredEvents = events.filter(e => e.time >= cutoff);
+  const filteredEvents = events.filter(e => e.time.getTime() >= cutoff);
   
-  const labels = [new Date(cutoff).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })];
-  const data = [0];
-  
-  filteredEvents.forEach(e => {
-    labels.push(new Date(e.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    data.push(e.total);
-  });
-
-  const chEl = document.getElementById('portfolioChartChange');
-  if (currentTotal === 0) {
-    if (chEl) { chEl.textContent = 'Empty'; chEl.className = 'graph-change'; }
-  } else {
-    const first = data.find(v => v > 0) || 1;
-    const last = currentTotal;
-    const changePct = ((last - first) / first) * 100;
-    if (chEl) {
-      chEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(1) + '%';
-      chEl.className = 'graph-change ' + (changePct >= 0 ? 'up' : 'down');
-    }
+  // If we filtered out the start, make the first event the new start
+  if (filteredEvents.length > 0 && filteredEvents[0].type !== 'start') {
+      filteredEvents.unshift({
+          id: 0,
+          type: 'start',
+          title: 'Start of Period',
+          shortLabel: 'Start',
+          assetName: 'Inventory',
+          quantityLabel: 'Starting point',
+          transactionAmount: 0,
+          change: 0,
+          before: filteredEvents[0].before,
+          after: filteredEvents[0].before,
+          colourStage: 2,
+          time: new Date(cutoff)
+      });
   }
+
+  const labels = filteredEvents.map(e => e.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  const data = filteredEvents.map(e => e.after);
 
   if (chartInner) {
-    chartInner.style.width = Math.max(650, (data.length + 1) * 75) + 'px';
+    chartInner.style.width = Math.max(650, (data.length + 1) * 150) + 'px';
   }
 
-  APP.portfolioChart = new Chart(ctx, {
+  chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
       datasets: [{
         data,
-        borderColor: '#FFD700',
-        backgroundColor: 'rgba(255,215,0,0.1)',
-        fill: true, tension: 0.1, pointRadius: 4, pointHoverRadius: 8, borderWidth: 3,
-        pointBackgroundColor: '#FFD700'
+        borderColor: COLOURS[2].hex,
+        borderWidth: 3,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        fill: false,
+        segment: {
+          borderColor: ctx => {
+            const idx = ctx.p1DataIndex;
+            if (idx === 0) return '#FFD700';
+            return COLOURS[filteredEvents[idx].colourStage].hex;
+          }
+        }
       }]
     },
     options: {
@@ -472,13 +596,63 @@ async function renderPortfolioChart() {
       scales: {
         x: { grid: { display: false }, ticks: { color: '#999', font: { size: 10 }, maxTicksLimit: 10 } },
         y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#999', font: { size: 10 }, callback: v => formatPrice(v) } }
+      },
+      animation: {
+        onComplete: function() {
+            drawMarkers(filteredEvents, markerLayer);
+        }
       }
     }
   });
 
   setTimeout(() => {
     if (chartScroll) chartScroll.scrollLeft = chartScroll.scrollWidth;
+    drawMarkers(filteredEvents, markerLayer);
   }, 100);
+}
+
+function drawMarkers(events, layer) {
+    if (!layer) return;
+    layer.innerHTML = '';
+    const meta = chartInstance.getDatasetMeta(0);
+    if (!meta || !meta.data) return;
+
+    events.forEach((event, index) => {
+        const point = meta.data[index];
+        if (!point) return;
+
+        const pos = point.getProps(['x', 'y'], true);
+        
+        const btn = document.createElement('div');
+        btn.className = 'graph-marker';
+        
+        if (index === 0) {
+            btn.classList.add('start-marker');
+        }
+
+        const iconColor = ICON_COLORS[event.type] || '#FFD700';
+        btn.style.left = pos.x + 'px';
+        btn.style.top = pos.y + 'px';
+        btn.style.setProperty('--icon-color', iconColor);
+        
+        if (index !== 0) {
+            const iconName = ICONS[event.type] || 'activity';
+            btn.innerHTML = `
+                <i data-lucide="${iconName}"></i>
+                <span class="marker-label">
+                    ${escapeHtml(event.shortLabel)}<br>
+                    <span style="color:${iconColor}; font-weight:bold;">${escapeHtml(formatPrice(event.transactionAmount))}</span>
+                </span>
+            `;
+            btn.title = `${event.title} | ${formatPrice(event.transactionAmount)} | Inv: ${formatPrice(event.after)}`;
+        }
+
+        layer.appendChild(btn);
+    });
+
+    if (window.lucide) {
+        window.lucide.createIcons({ root: layer, attrs: { 'stroke-width': 1.8 } });
+    }
 }
 
 function changePortfolioTime(days, btn) {
@@ -1020,16 +1194,32 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING
+// MINING (FIXED LOGIC)
 // ============================================================
+let currentMiningSlots = [null, null, null];
+
 async function loadMining() {
   const sb = getSupabase();
   if (!sb) return;
   
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
-  const currentHour = now.getUTCHours(); // Adjust based on timezone
+  const currentHour = now.getUTCHours();
   const sessionSlot = currentHour < 12 ? 'AM' : 'PM';
+  
+  // NEW USER CHECK based on CALENDAR DATE
+  const createdDate = new Date(APP.profile?.created_at || 0).toDateString();
+  const todayDate = now.toDateString();
+  
+  if (createdDate === todayDate) {
+    document.getElementById('miningCostInfo').textContent = "Your account is new. Mining starts tomorrow!";
+    ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    document.getElementById('miningStartBtn').disabled = true;
+    return;
+  }
 
   const { data: assignment } = await sb.from('daily_mining')
     .select('*')
@@ -1044,7 +1234,7 @@ async function loadMining() {
   document.getElementById('miningStartBtn').disabled = true;
 
   if (assignedCardIds.length === 0) {
-    document.getElementById('miningCostInfo').textContent = "Your account is new. Mining starts tomorrow!";
+    document.getElementById('miningCostInfo').textContent = "No eligible cards for mining today.";
     ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
@@ -1052,67 +1242,141 @@ async function loadMining() {
     return;
   }
 
-  document.getElementById('miningCostInfo').textContent = "Tap slots to buy missing cards or mine if ready.";
+  document.getElementById('miningCostInfo').textContent = "Tap the cards to verify ownership.";
   
+  currentMiningSlots = [...assignedCardIds];
+  renderMiningUI();
+}
+
+function renderMiningUI() {
+  const s = Demo ? Demo.state() : null; // Check if demo exists, else live
   const inv = getInventory();
+  const b = getBalances();
   let allOwned = true;
-  
+  let filledSlots = 0;
+
   ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach((elId, index) => {
     const el = document.getElementById(elId);
     if (!el) return;
     
-    if (index >= assignedCardIds.length) {
+    const cardId = currentMiningSlots[index];
+    if (!cardId) {
       el.style.display = 'none';
       return;
     }
     
+    filledSlots++;
     el.style.display = 'block';
-    const cardId = assignedCardIds[index];
-    const card = APP.cards.find(c => c.id === cardId);
+    el.className = 'card-item'; // Reset classes
+    el.onclick = null;
     
-    if (card) {
-      const hasMarketplace = (inv[card.id]?.marketplace_quantity || 0) > 0;
-      if (!hasMarketplace) allOwned = false;
-      
-      el.innerHTML = `
-        <img src="${card.image_url}" style="width:100%;border-radius:8px;${!hasMarketplace ? 'opacity:0.5;' : ''}" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
-        <div style="font-size:10px;font-weight:bold;margin-top:4px;">${card.name}</div>
-        ${!hasMarketplace ? '<div style="color:#FF4444;font-size:9px;">Need to buy</div>' : '<div style="color:#22C55E;font-size:9px;">Ready</div>'}
-      `;
-      el.dataset.cardId = card.id;
+    const card = APP.cards.find(c => c.id === cardId);
+    if (!card) return;
+
+    const mktQty = (inv[card.id]?.marketplace_quantity || 0);
+    const trdQty = (inv[card.id]?.trade_quantity || 0);
+
+    let statusHtml = '';
+    let opacity = '0.4';
+
+    if (mktQty > 0) {
+      allOwned = true;
+      opacity = '1';
+      statusHtml = `<div style="color:#22C55E;font-size:9px;font-weight:bold;">Ready</div>`;
+    } else if (trdQty > 0) {
+      allOwned = false;
+      statusHtml = `<div style="color:#FF4444;font-size:9px;font-weight:bold;">Trade (Invalid)</div>`;
+      el.onclick = () => handleTradeCardReRoll(index, card);
+    } else {
+      allOwned = false;
+      statusHtml = `<div style="color:#FF4444;font-size:9px;font-weight:bold;">Need to buy</div>`;
       el.onclick = () => {
-        if (!hasMarketplace) {
-          showToast('Buy this card from Marketplace to mine it', 'info');
-          navigateTo('trade');
-          document.getElementById('tradeSearchInput').value = card.name;
-          filterTradeListings();
-        }
+        showToast('Please buy this card from the Marketplace', 'info');
+        navigateTo('trade');
+        document.getElementById('tradeSearchInput').value = card.name;
+        filterTradeListings();
       };
     }
+
+    el.innerHTML = `
+      <img src="${card.image_url}" style="width:100%;border-radius:8px;opacity:${opacity};" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+      <div style="font-size:10px;font-weight:bold;margin-top:4px;">${card.name}</div>
+      ${statusHtml}
+    `;
   });
 
   const btn = document.getElementById('miningStartBtn');
-  if (allOwned && !assignment?.completed) {
+  if (allOwned && filledSlots > 0) {
     btn.disabled = false;
     btn.style.background = '#FFD700';
+    document.getElementById('miningCostInfo').textContent = "All cards ready. Tap Start Mining.";
   } else {
     btn.disabled = true;
     btn.style.background = '#888';
-    if (assignment?.completed) document.getElementById('miningCostInfo').textContent = "This session is already completed.";
+    document.getElementById('miningCostInfo').textContent = "Fix the slots to proceed.";
+  }
+}
+
+function handleTradeCardReRoll(index, card) {
+  showToast('This card was bought from Trade and cannot be used for mining. Replacing it...', 'error');
+  
+  // Find a replacement card
+  const stage = getStage();
+  const cfg = getStageConfig(stage);
+  const inv = getInventory();
+  
+  // Pool of eligible cards
+  const pool = APP.cards.filter(c => 
+    !c.is_bonus && 
+    !c.is_disappearing && 
+    c.is_active &&
+    (c.current_price || c.original_price) >= cfg.minCardPrice &&
+    (c.current_price || c.original_price) <= cfg.maxCardPrice &&
+    !currentMiningSlots.includes(c.id) // don't pick one already in slots
+  );
+
+  // Shuffle
+  pool.sort(() => 0.5 - Math.random());
+  
+  // Pick one that is NOT solely owned by trade
+  let replacement = null;
+  for (const c of pool) {
+    const i = inv[c.id];
+    if (!i || (i.marketplace_quantity || 0) > 0) {
+      replacement = c.id;
+      break;
+    }
+  }
+
+  if (replacement) {
+    currentMiningSlots[index] = replacement;
+    showToast(`Replaced with ${APP.cards.find(c=>c.id===replacement).name}`, 'success');
+    renderMiningUI();
+  } else {
+    // No replacement found, hide the slot
+    currentMiningSlots[index] = null;
+    showToast('No replacement card found. Slot removed.', 'error');
+    renderMiningUI();
   }
 }
 
 async function startMining() {
-  const slots = Array.from(document.querySelectorAll('.mining-card-grid .card-item'))
-    .filter(el => el.style.display !== 'none' && el.dataset.cardId)
-    .map(el => el.dataset.cardId);
-    
-  if (slots.length === 0) { showToast('No cards to mine', 'error'); return; }
-  if (!confirm(`Mine these ${slots.length} cards? They will be permanently burned.`)) return;
+  const validSlots = currentMiningSlots.filter(id => id !== null);
+  if (validSlots.length === 0) return showToast('No cards selected', 'error');
+  
+  const inv = getInventory();
+  let allReady = true;
+  validSlots.forEach(id => {
+    if ((inv[id]?.marketplace_quantity || 0) === 0) allReady = false;
+  });
+  
+  if (!allReady) return showToast('You must own all cards from Marketplace', 'error');
+  
+  if (!confirm(`Mine these ${validSlots.length} cards? They will be permanently burned.`)) return;
   
   showLoading('Mining...');
   try {
-    const { data, error } = await getSupabase().functions.invoke('mining', { body: { cardIds: slots } });
+    const { data, error } = await getSupabase().functions.invoke('mining', { body: { cardIds: validSlots } });
     if (error || data?.error) throw new Error(data?.error || error.message);
     
     showToast('Mined successfully!', 'success');
@@ -2372,7 +2636,7 @@ window.confirmSell = confirmSell;
 window.tapMiningSlot = tapMiningSlot;
 window.startMining = startMining;
 window.completeDailyCombo = completeDailyCombo;
-window.useDisappearingForStreak = useDisappearingForStreak; // ✅ ADDED EXPORT
+window.useDisappearingForStreak = useDisappearingForStreak;
 window.openDepositModal = openDepositModal;
 window.closeDepositModal = closeDepositModal;
 window.selectPaymentMethod = selectPaymentMethod;
