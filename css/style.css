@@ -2029,3 +2029,57 @@ body.demo-mode .top-bar { top: 26px; }
 @supports (padding: max(0px)) {
   .bottom-nav { padding-bottom: max(6px, env(safe-area-inset-bottom)); }
 }
+
+/* ============================================================
+   GRAPH MARKERS (LUCIDE ICONS)
+   ============================================================ */
+
+.marker-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.graph-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 50%;
+  background: #0b1424;
+  border: 1px solid var(--icon-color);
+  box-shadow: 0 0 0 3px rgba(8, 13, 24, .86);
+  pointer-events: auto;
+  z-index: 4;
+}
+
+.graph-marker svg {
+  width: 12px;
+  height: 12px;
+  color: var(--icon-color);
+  stroke-width: 2;
+}
+
+.marker-label {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90px;
+  padding: 4px;
+  background: #111c2e;
+  border: 1px solid #35435d;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 9px;
+  color: #fff;
+  display: none; /* Shows on hover */
+}
+
+.graph-marker:hover .marker-label {
+  display: block;
+}
