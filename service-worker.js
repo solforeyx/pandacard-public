@@ -30,7 +30,6 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  // Never cache API / auth calls — always hit network
   if (
     url.pathname.startsWith('/rest/') ||
     url.pathname.startsWith('/auth/') ||
@@ -41,7 +40,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation → network-first, offline fallback
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).catch(() => caches.match(OFFLINE_URL))
@@ -49,7 +47,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets → cache-first, network fallback
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
@@ -82,34 +79,33 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Panda Card';
   const body = data.body || 'You have a new update.';
   const url = data.url || '/app.html';
-
-  // ✅ FIXED: Force a unique tag so Live mode notifications stack properly.
-  // (We ignore data.tag from the backend to prevent them from replacing each other)
   const uniqueTag = `pandacard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // ✅ FIXED: Force Panda icon if backend sends empty/null
+  const pandaIcon = 'https://i.imgur.com/9aLmHyS.png';
+  const safeIcon = (data.icon && data.icon.trim() !== '') ? data.icon : pandaIcon;
+  const safeBadge = (data.badge && data.badge.trim() !== '') ? data.badge : '/assets/icons/notification-icon.png';
 
   const options = {
     body,
-    icon: data.icon || 'https://i.imgur.com/9aLmHyS.png',
-    badge: data.badge || '/assets/icons/notification-icon.png',
-    image: data.image || undefined, // big banner preview (WhatsApp-style)
+    icon: safeIcon,
+    badge: safeBadge,
+    image: data.image || undefined,
     vibrate: data.vibrate || [200, 100, 200, 100, 200],
     data: {
       url,
       timestamp: Date.now(),
       ...(data.data || {}),
     },
-    actions: [
-      { action: 'open', title: 'Open App' },
-    ],
+    actions: [{ action: 'open', title: 'Open App' }],
     tag: uniqueTag,
-    renotify: true, // vibrate/alert each time
+    renotify: true,
     requireInteraction: false,
     timestamp: Date.now(),
   };
 
-  // Remove undefined fields so browser doesn't reject options
   Object.keys(options).forEach((k) => {
-    if (options[k] === undefined) delete options[k];
+    if (options[k] === undefined) options[k] = null;
   });
 
   event.waitUntil(
@@ -127,28 +123,21 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Focus existing tab if it's on the target URL
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if (client.url === targetUrl && 'focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise focus any existing window and navigate it
       if (windowClients.length > 0 && 'focus' in windowClients[0]) {
         const first = windowClients[0];
         first.focus();
         if ('navigate' in first) return first.navigate(targetUrl);
         return first;
       }
-      // No window open → open new
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
     })
   );
-});
-
-self.addEventListener('notificationclose', () => {
-  // Optional analytics hook — leave blank
 });
