@@ -331,33 +331,139 @@ function renderChecklist() {
   el.innerHTML = `<div class="checklist-card"><div class="checklist-title"><span class="material-icons">checklist</span> Getting Started</div><div class="checklist-sub">Complete these to unlock the full experience</div>${rows.map(r => `<div class="checklist-item ${r.done ? 'done' : ''}" onclick="${r.action}"><span class="check-circle"><span class="material-icons">check</span></span><span class="check-label">${escapeHtml(r.label)}</span></div>`).join('')}</div>`;
 }
 
-// ✅ REAL EVENT-BASED GRAPH FOR DEMO
+// ============================================================
+// THE NEW GRAPH LOGIC (MATCHING SAMPLE)
+// ============================================================
+const COLOURS = [
+    { name: "Red",    hex: "#ff4d5a" },
+    { name: "Orange", hex: "#ff963d" },
+    { name: "Yellow", hex: "#ffd54f" },
+    { name: "Lemon",  hex: "#dfff00" },
+    { name: "Green",  hex: "#29d391" }
+];
+
+const ICONS = {
+    start: "circle-dot",
+    card_purchase: "shopping-cart",
+    card_sale: "tag",
+    someone_bought_card: "hand-coins",
+    coin_purchase: "coins",
+    someone_bought_coins: "wallet",
+    mining: "pickaxe",
+    daily_combo: "gem",
+    value_decrease: "trending-down"
+};
+
+const ICON_COLORS = {
+    start: "#ffd54f",
+    card_purchase: "#29d391",
+    card_sale: "#ff6378",
+    someone_bought_card: "#65a8ff",
+    coin_purchase: "#ffd54f",
+    someone_bought_coins: "#bb91ff",
+    mining: "#65a8ff",
+    daily_combo: "#ffc857",
+    value_decrease: "#ff6378"
+};
+
 function renderPortfolioChart() {
   const canvas = document.getElementById('portfolioChart');
   const chartInner = document.getElementById('chartInner');
   const chartScroll = document.getElementById('chartScroll');
+  const markerLayer = document.getElementById('markerLayer');
   if (!canvas || typeof Chart === 'undefined') return;
   
   const ctx = canvas.getContext('2d');
   if (APP.portfolioChart) { try { APP.portfolioChart.destroy(); } catch (e) {} }
+  if (markerLayer) markerLayer.innerHTML = '';
 
   const s = Demo.state();
   const txs = [...(s.transactions || [])].reverse(); // oldest first
   const events = [];
   let runningTotal = 0;
+  let currentColourStage = 2; // Start at Yellow
+
+  // Initial state
+  events.push({
+    id: 0,
+    type: 'start',
+    title: 'Starting Inventory',
+    shortLabel: 'Start',
+    assetName: 'Inventory',
+    quantityLabel: 'Starting point',
+    transactionAmount: 0,
+    change: 0,
+    before: 0,
+    after: 0,
+    colourStage: 2,
+    time: new Date(Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000))
+  });
 
   txs.forEach(tx => {
+    let type = 'adjustment';
+    let change = 0;
+    let title = '';
+    let assetName = 'Unknown';
+    let qtyLabel = '1 item';
+
     const cardId = tx.cardId || tx.listingId;
     const card = APP.cards.find(c => c.id === cardId);
     const val = card ? (card.current_price || card.original_price || 0) : (tx.amount || 0);
+    if (card) assetName = card.name;
 
     if (tx.type === 'marketplace_buy' || tx.type === 'trade_buy') {
-      runningTotal += val;
-      events.push({ time: tx.createdAt, total: runningTotal, type: tx.type });
-    } else if (tx.type === 'trade_sell' || tx.type === 'mining_reward' || tx.type === 'daily_combo' || tx.type === 'listing_create') {
-      runningTotal = Math.max(0, runningTotal - val);
-      events.push({ time: tx.createdAt, total: runningTotal, type: tx.type });
+      type = 'card_purchase';
+      change = val;
+      title = 'Card Purchased';
+      qtyLabel = '1 card';
+    } else if (tx.type === 'trade_sell') {
+      type = 'someone_bought_card';
+      change = -val;
+      title = 'Someone Bought My Card';
+      qtyLabel = '1 card sold';
+    } else if (tx.type === 'mining_reward') {
+      type = 'mining';
+      change = -val;
+      title = 'Card Used for Mining';
+      qtyLabel = '1 card used';
+    } else if (tx.type === 'daily_combo') {
+      type = 'daily_combo';
+      change = -val;
+      title = 'Card Used for Daily Combo';
+      qtyLabel = '1 card used';
+    } else if (tx.type === 'coin_buy') {
+      type = 'coin_purchase';
+      change = 0; // Does not affect inventory value
+      title = 'Coins Purchased';
+      assetName = 'Coins';
+      qtyLabel = 'Coins';
+    } else if (tx.type === 'withdraw') {
+      type = 'value_decrease';
+      change = -val;
+      title = 'Withdrawal';
+      assetName = 'Cash';
     }
+
+    if (change > 0) currentColourStage = Math.min(4, currentColourStage + 1);
+    else if (change < 0) currentColourStage = Math.max(0, currentColourStage - 1);
+
+    const before = runningTotal;
+    runningTotal = Math.max(0, runningTotal + change);
+
+    events.push({
+      id: tx.id,
+      type,
+      title,
+      shortLabel: title,
+      assetName,
+      quantityLabel: qtyLabel,
+      transactionAmount: Math.abs(tx.amount || val),
+      change: change,
+      before: before,
+      after: runningTotal,
+      colourStage: currentColourStage,
+      time: new Date(tx.createdAt)
+    });
   });
 
   const inv = getInventory();
@@ -367,22 +473,49 @@ function renderPortfolioChart() {
     if (c) currentTotal += (c.current_price || c.original_price || 0) * (inv[id]?.quantity || 0);
   });
   
-  if (events.length > 0 && events[events.length-1].total !== currentTotal) {
-    events.push({ time: Date.now(), total: currentTotal, type: 'adjustment' });
-  } else if (events.length === 0 && currentTotal > 0) {
-    events.push({ time: Date.now(), total: currentTotal, type: 'init' });
+  if (events.length > 0 && events[events.length-1].after !== currentTotal) {
+    const diff = currentTotal - events[events.length-1].after;
+    if (diff > 0) currentColourStage = Math.min(4, currentColourStage + 1);
+    else if (diff < 0) currentColourStage = Math.max(0, currentColourStage - 1);
+    
+    events.push({
+        id: 'adj',
+        type: 'adjustment',
+        title: 'Inventory Adjustment',
+        shortLabel: 'Adjustment',
+        assetName: 'Manual',
+        quantityLabel: 'Balance fix',
+        transactionAmount: Math.abs(diff),
+        change: diff,
+        before: events[events.length-1].after,
+        after: currentTotal,
+        colourStage: currentColourStage,
+        time: new Date()
+    });
   }
 
   const cutoff = Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000);
-  const filteredEvents = events.filter(e => e.time >= cutoff);
+  const filteredEvents = events.filter(e => e.time.getTime() >= cutoff);
   
-  const labels = [new Date(cutoff).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })];
-  const data = [0];
-  
-  filteredEvents.forEach(e => {
-    labels.push(new Date(e.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    data.push(e.total);
-  });
+  if (filteredEvents.length > 0 && filteredEvents[0].type !== 'start') {
+      filteredEvents.unshift({
+          id: 0,
+          type: 'start',
+          title: 'Start of Period',
+          shortLabel: 'Start',
+          assetName: 'Inventory',
+          quantityLabel: 'Starting point',
+          transactionAmount: 0,
+          change: 0,
+          before: filteredEvents[0].before,
+          after: filteredEvents[0].before,
+          colourStage: 2,
+          time: new Date(cutoff)
+      });
+  }
+
+  const labels = filteredEvents.map(e => e.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  const data = filteredEvents.map(e => e.after);
 
   const chEl = document.getElementById('portfolioChartChange');
   if (currentTotal === 0) {
@@ -397,15 +530,94 @@ function renderPortfolioChart() {
     }
   }
 
-  if (chartInner) chartInner.style.width = Math.max(650, (data.length + 1) * 75) + 'px';
+  if (chartInner) {
+    chartInner.style.width = Math.max(650, (data.length + 1) * 150) + 'px';
+  }
 
   APP.portfolioChart = new Chart(ctx, {
     type: 'line',
-    data: { labels, datasets: [{ data, borderColor: '#FFD700', backgroundColor: 'rgba(255,215,0,0.1)', fill: true, tension: 0.1, pointRadius: 4, pointHoverRadius: 8, borderWidth: 3, pointBackgroundColor: '#FFD700' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#999', font: { size: 10 }, maxTicksLimit: 10 } }, y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#999', font: { size: 10 }, callback: v => formatPrice(v) } } } }
+    data: {
+      labels,
+      datasets: [{
+        data,
+        borderColor: COLOURS[2].hex,
+        borderWidth: 3,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        fill: false,
+        segment: {
+          borderColor: ctx => {
+            const idx = ctx.p1DataIndex;
+            if (idx === 0) return COLOURS[2].hex;
+            return COLOURS[filteredEvents[idx].colourStage].hex;
+          }
+        }
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#999', font: { size: 10 }, maxTicksLimit: 10 } },
+        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#999', font: { size: 10 }, callback: v => formatPrice(v) } }
+      },
+      animation: {
+        onComplete: function() {
+            drawMarkers(filteredEvents, markerLayer);
+        }
+      }
+    }
   });
-  
-  setTimeout(() => { if (chartScroll) chartScroll.scrollLeft = chartScroll.scrollWidth; }, 100);
+
+  setTimeout(() => {
+    if (chartScroll) chartScroll.scrollLeft = chartScroll.scrollWidth;
+    drawMarkers(filteredEvents, markerLayer);
+  }, 100);
+}
+
+function drawMarkers(events, layer) {
+    if (!layer) return;
+    layer.innerHTML = '';
+    const meta = APP.portfolioChart.getDatasetMeta(0);
+    if (!meta || !meta.data) return;
+
+    events.forEach((event, index) => {
+        const point = meta.data[index];
+        if (!point) return;
+
+        const pos = point.getProps(['x', 'y'], true);
+        
+        const btn = document.createElement('div');
+        btn.className = 'graph-marker';
+        
+        if (index === 0) {
+            btn.classList.add('start-marker');
+        }
+
+        const iconColor = ICON_COLORS[event.type] || '#FFD700';
+        btn.style.left = pos.x + 'px';
+        btn.style.top = pos.y + 'px';
+        btn.style.setProperty('--icon-color', iconColor);
+        
+        if (index !== 0) {
+            const iconName = ICONS[event.type] || 'activity';
+            btn.innerHTML = `
+                <i data-lucide="${iconName}"></i>
+                <span class="marker-label">
+                    ${escapeHtml(event.shortLabel)}<br>
+                    <span style="color:${iconColor}; font-weight:bold;">${escapeHtml(formatPrice(event.transactionAmount))}</span>
+                </span>
+            `;
+            btn.title = `${event.title} | ${formatPrice(event.transactionAmount)} | Inv: ${formatPrice(event.after)}`;
+        }
+
+        layer.appendChild(btn);
+    });
+
+    if (window.lucide) {
+        window.lucide.createIcons({ root: layer, attrs: { 'stroke-width': 1.8 } });
+    }
 }
 
 function changePortfolioTime(days, btn) {
@@ -645,21 +857,34 @@ function confirmSell(cardId) {
   loadInventory(); loadTrade(); loadDashboard();
 }
 
+// ✅ FIXED CANCEL LISTING MATH
 function cancelListing(listingId) {
   const s = Demo.state();
   const l = (s.listings || []).find(x => x.id === listingId);
   if (!l || l.status !== 'active') return showToast('Listing not active', 'error');
   if (l.remaining !== l.units) return showToast('Cannot cancel after 1 sold.', 'error');
   if (!confirm('Cancel listing? Card returns to inventory with -10% ceiling.')) return;
+  
   Demo.update(st => {
     const li = st.listings.find(x => x.id === listingId); if (!li) return;
     li.status = 'cancelled'; li.cancelled_at = Date.now();
     st.inventory = st.inventory || {};
+    
+    const card = APP.cards.find(c => c.id === li.cardId);
+    const originalFloor = card ? (card.original_price || card.current_price) : li.original_price_at_listing;
+    const defaultCeiling = originalFloor * 10;
+
     if (!st.inventory[li.cardId]) {
-      st.inventory[li.cardId] = { quantity: 1, marketplace_quantity: 0, trade_quantity: 1, ceiling_price: li.original_price_at_listing * 9 };
+      st.inventory[li.cardId] = { 
+        quantity: 1, 
+        marketplace_quantity: 0, 
+        trade_quantity: 1, 
+        ceiling_price: defaultCeiling * 0.9 // 10% drop from true default
+      };
     } else {
-      const cur = st.inventory[li.cardId].ceiling_price || (li.original_price_at_listing * 10);
-      let nc = cur * 0.9; if (nc < li.original_price_at_listing) nc = li.original_price_at_listing;
+      const cur = st.inventory[li.cardId].ceiling_price || defaultCeiling;
+      let nc = cur * 0.9; 
+      if (nc < originalFloor) nc = originalFloor;
       st.inventory[li.cardId].ceiling_price = nc;
       st.inventory[li.cardId].quantity++;
     }
@@ -781,7 +1006,7 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING (NEW LOGIC)
+// MINING (FIXED LOGIC)
 // ============================================================
 function loadMining() {
   const s = Demo.state();
@@ -842,13 +1067,63 @@ function renderMiningUI() {
     
     el.innerHTML = `<img src="${card.image_url}" style="width:100%;border-radius:8px;${!hasMkt ? 'opacity:0.5;' : ''}" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" /><div style="font-size:10px;font-weight:bold;margin-top:4px;">${card.name}</div>${!hasMkt ? '<div style="color:#FF4444;font-size:9px;">Need to buy</div>' : '<div style="color:#22C55E;font-size:9px;">Ready</div>'}`;
     el.dataset.cardId = card.id;
-    el.onclick = () => { 
-      if (!hasMkt) { 
-        showToast('Buy this card from Marketplace to mine it', 'info'); 
-        navigateTo('trade'); 
-        document.getElementById('tradeSearchInput').value = card.name;
-        filterTradeListings();
-      } 
+    
+    // ✅ NEW CLICK LOGIC
+    el.onclick = () => {
+      const invItem = inv[card.id];
+      const mktQty = invItem?.marketplace_quantity || 0;
+      const trdQty = invItem?.trade_quantity || 0;
+
+      if (mktQty > 0) {
+        showToast('You own this card from the marketplace. Ready to mine.', 'success');
+        return;
+      }
+
+      if (trdQty > 0) {
+        // Re-roll logic (does NOT consume Trade card)
+        showToast('This card was bought from Trade and cannot be used. Replacing...', 'error');
+        
+        const cfg = getStageConfig(getStage());
+        let pool = APP.cards.filter(c => 
+            !c.is_bonus && 
+            !c.is_disappearing && 
+            c.is_active &&
+            (c.current_price || c.original_price) >= cfg.minCardPrice &&
+            (c.current_price || c.original_price) <= cfg.maxCardPrice &&
+            !s.dailyMiningCards.includes(c.id) // don't pick one already in slots
+        );
+        
+        const validReplacement = pool.filter(c => {
+            const i = inv[c.id];
+            if (!i) return true;
+            return (i.marketplace_quantity || 0) > 0;
+        });
+        
+        if (validReplacement.length > 0) {
+            validReplacement.sort(() => 0.5 - Math.random());
+            const newCard = validReplacement[0];
+            
+            Demo.update(st => {
+               st.miningSlots[index] = newCard.id;
+               st.dailyMiningCards[index] = newCard.id;
+            });
+            showToast(`Replaced with ${newCard.name}`, 'success');
+            loadMining();
+        } else {
+            Demo.update(st => {
+               st.miningSlots[index] = null;
+               st.dailyMiningCards[index] = null;
+            });
+            showToast('No replacement card found. Slot removed.', 'error');
+            loadMining();
+        }
+        return;
+      }
+
+      showToast('You do not own this card. Buy it from the Marketplace.', 'info');
+      navigateTo('trade');
+      document.getElementById('tradeSearchInput').value = card.name;
+      filterTradeListings();
     };
   });
   
