@@ -1243,6 +1243,12 @@ async function loadMining() {
     .eq('session_slot', sessionSlot)
     .maybeSingle();
 
+  // ✅ NEW FIX: If assignment exists but has 0 cards (stale data), delete it so we can generate new ones
+  if (assignment && (!assignment.card_ids || assignment.card_ids.length === 0)) {
+    await sb.from('daily_mining').delete().eq('id', assignment.id);
+    assignment = null;
+  }
+
   // 4. If no assignment, generate it on the frontend!
   if (!assignment) {
     const stage = getStage();
@@ -1285,13 +1291,18 @@ async function loadMining() {
   }
 
   // 5. Render the UI
-  if (assignment) {
-    currentMiningSlots = assignment.card_ids || [];
+  if (assignment && assignment.card_ids && assignment.card_ids.length > 0) {
+    currentMiningSlots = assignment.card_ids;
     document.getElementById('miningSessionsUsed').textContent = (assignment.completed ? '1' : '0') + '/2';
     document.getElementById('miningCostInfo').textContent = "Tap the cards to verify ownership.";
     renderMiningUI();
   } else {
-    document.getElementById('miningCostInfo').textContent = "Error loading mining cards.";
+    document.getElementById('miningCostInfo').textContent = "No eligible cards for mining today.";
+    document.getElementById('miningStartBtn').disabled = true;
+    ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
   }
 }
 
@@ -1819,7 +1830,20 @@ async function submitWithdraw() {
     const { data, error } = await getSupabase().functions.invoke('withdrawal', { 
       body: { amount: amt, pin, useBonusCard: useBonus, bonusCardId: selectedBonusId } 
     });
-    if (error || data?.error) throw new Error(data?.error || error.message);
+
+    // ✅ NEW: Extract the exact error message from the backend
+    if (error) {
+      let actualError = error.message;
+      try {
+        // Supabase hides the response body in an object called 'context'
+        const errorBody = await error.context.json();
+        actualError = errorBody.error || errorBody.message || actualError;
+      } catch (e) {}
+      throw new Error(actualError);
+    }
+    
+    if (data?.error) throw new Error(data.error);
+
     showToast('Withdrawal requested successfully', 'success');
     playSound('reward');
     await refreshLiveProfile();
