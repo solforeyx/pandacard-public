@@ -726,6 +726,10 @@ body.demo-mode .top-bar { top: 26px; }
   position: relative;
   height: 250px;
   min-width: 650px; /* Forces horizontal scroll on mobile */
+  padding-top: 40px; /* ADDED: Space for top markers */
+  padding-bottom: 60px; /* ADDED: Space for bottom markers/tooltips */
+  margin-top: -40px;
+  margin-bottom: -40px;
 }
 
 .graph-container .time-filters { display: flex; gap: 8px; margin-top: 12px; justify-content: center; }
@@ -2031,7 +2035,7 @@ body.demo-mode .top-bar { top: 26px; }
 }
 
 /* ============================================================
-   GRAPH MARKERS (LUCIDE ICONS)
+   GRAPH MARKERS (LUCIDE ICONS) — CLEANED UP
    ============================================================ */
 
 .marker-layer {
@@ -2049,12 +2053,12 @@ body.demo-mode .top-bar { top: 26px; }
   display: flex;
   justify-content: center;
   align-items: center;
+  background: #ffffff; /* Clean white background */
   border-radius: 50%;
-  background: #0b1424;
-  border: 1px solid var(--icon-color);
-  box-shadow: 0 0 0 3px rgba(8, 13, 24, .86);
+  border: 1px solid #eee;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   pointer-events: auto;
-  z-index: 4;
+  z-index: 10;
 }
 
 .graph-marker svg {
@@ -2069,15 +2073,16 @@ body.demo-mode .top-bar { top: 26px; }
   top: 28px;
   left: 50%;
   transform: translateX(-50%);
-  width: 90px;
-  padding: 4px;
+  width: 110px; /* Wider to fit text */
+  padding: 6px;
   background: #111c2e;
   border: 1px solid #35435d;
   border-radius: 6px;
   text-align: center;
-  font-size: 9px;
+  font-size: 10px;
   color: #fff;
   display: none; /* Shows on hover */
+  z-index: 11;
 }
 
 .graph-marker:hover .marker-label {
