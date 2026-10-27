@@ -2,11 +2,25 @@
 // PANDA CARD — MAIN APP (LIVE MODE ONLY)
 // ============================================================
 
+// ✅ AUTO-CLEAR CACHE (Forces PWA to load new code)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+    for(let registration of registrations) {
+      registration.unregister();
+    }
+  });
+  if ('caches' in window) {
+    caches.keys().then((names) => {
+      names.forEach(name => { caches.delete(name); });
+    });
+  }
+}
+
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
+    navigator.serviceWorker.register('/service-worker.js?v=' + new Date().getTime())
       .then(reg => console.log('SW registered:', reg.scope))
       .catch(err => console.warn('SW registration failed:', err));
   });
@@ -682,7 +696,6 @@ function renderMarketplaceGrid() {
     return;
   }
 
-  // ✅ APPLY 20% HIDING ONLY TO MARKETPLACE VIEW
   const todayStr = new Date().toISOString().slice(0, 10);
   const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
   const visiblePct = 80;
@@ -1215,7 +1228,6 @@ async function loadMining() {
   const sb = getSupabase();
   if (!sb) return;
 
-  // 1. New User Check (Created today)
   const createdDate = new Date(APP.profile?.created_at || 0).toDateString();
   const todayDate = new Date().toDateString();
   
@@ -1229,13 +1241,11 @@ async function loadMining() {
     return;
   }
 
-  // 2. Determine Session (AM/PM UTC)
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const currentHour = now.getUTCHours();
   const sessionSlot = currentHour < 12 ? 'AM' : 'PM';
 
-  // 3. Check if Assignment exists in DB
   let { data: assignment, error: fetchErr } = await sb.from('daily_mining')
     .select('*')
     .eq('user_id', APP.user.id)
@@ -1244,56 +1254,48 @@ async function loadMining() {
     .maybeSingle();
 
   if (fetchErr) {
-    document.getElementById('miningCostInfo').textContent = "DB Error: " + fetchErr.message;
+    alert("DB FETCH ERROR: " + fetchErr.message);
     return;
   }
 
-  // ✅ NEW FIX: If assignment exists but has 0 cards (stale data), delete it so we can generate new ones
   if (assignment && (!assignment.card_ids || assignment.card_ids.length === 0)) {
     await sb.from('daily_mining').delete().eq('id', assignment.id);
     assignment = null;
   }
 
-  // 4. If no assignment, generate it on the frontend!
   if (!assignment) {
     if (!APP.cards || APP.cards.length === 0) {
-       document.getElementById('miningCostInfo').textContent = "No cards loaded in app. Please refresh the app.";
+       alert("APP.CARDS IS EMPTY! The cards did not load from the database.");
+       document.getElementById('miningCostInfo').textContent = "No cards loaded. Please refresh.";
        return;
     }
 
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
-    // Filter cards by stage rules
     let pool = APP.cards.filter(c => 
       !c.is_bonus && !c.is_disappearing && c.is_active &&
       (c.current_price || c.original_price) >= cfg.minCardPrice &&
       (c.current_price || c.original_price) <= cfg.maxCardPrice
     );
 
-    // If pool is too small, widen the net
     if (pool.length < 3) {
       pool = APP.cards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
     }
 
-    // Shuffle and pick 3
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
     const picked = shuffled.slice(0, 3).map(c => c.id);
 
     if (picked.length === 0) {
-       document.getElementById('miningCostInfo').textContent = "No eligible cards available to assign.";
+       alert("NO ELIGIBLE CARDS FOUND in your stage price range.");
+       document.getElementById('miningCostInfo').textContent = "No eligible cards.";
        return;
     }
 
-    // ✅ Delete old AM session if we are currently in PM
     if (sessionSlot === 'PM') {
-      await sb.from('daily_mining').delete()
-        .eq('user_id', APP.user.id)
-        .eq('session_date', today)
-        .eq('session_slot', 'AM');
+      await sb.from('daily_mining').delete().eq('user_id', APP.user.id).eq('session_date', today).eq('session_slot', 'AM');
     }
 
-    // Save new assignment to DB
     const { data: newAssign, error: insErr } = await sb.from('daily_mining').insert({
       user_id: APP.user.id,
       session_date: today,
@@ -1303,14 +1305,13 @@ async function loadMining() {
     }).select().single();
 
     if (insErr) {
-      // This will tell you if the RLS policy is blocking it!
-      document.getElementById('miningCostInfo').textContent = "Save Error: " + insErr.message + ". (Did you run the RLS SQL?)";
+      alert("MINING SAVE ERROR: " + insErr.message);
+      document.getElementById('miningCostInfo').textContent = "Save Error: " + insErr.message;
       return;
     }
     assignment = newAssign;
   }
 
-  // 5. Render the UI
   if (assignment && assignment.card_ids && assignment.card_ids.length > 0) {
     currentMiningSlots = assignment.card_ids;
     document.getElementById('miningSessionsUsed').textContent = (assignment.completed ? '1' : '0') + '/2';
@@ -1399,25 +1400,21 @@ function renderMiningUI() {
 function handleTradeCardReRoll(index, card) {
   showToast('This card was bought from Trade and cannot be used for mining. Replacing it...', 'error');
   
-  // Find a replacement card
   const stage = getStage();
   const cfg = getStageConfig(stage);
   const inv = getInventory();
   
-  // Pool of eligible cards
   const pool = APP.cards.filter(c => 
     !c.is_bonus && 
     !c.is_disappearing && 
     c.is_active &&
     (c.current_price || c.original_price) >= cfg.minCardPrice &&
     (c.current_price || c.original_price) <= cfg.maxCardPrice &&
-    !currentMiningSlots.includes(c.id) // don't pick one already in slots
+    !currentMiningSlots.includes(c.id)
   );
 
-  // Shuffle
   pool.sort(() => 0.5 - Math.random());
   
-  // Pick one that is NOT solely owned by trade
   let replacement = null;
   for (const c of pool) {
     const i = inv[c.id];
@@ -1432,7 +1429,6 @@ function handleTradeCardReRoll(index, card) {
     showToast(`Replaced with ${APP.cards.find(c=>c.id===replacement).name}`, 'success');
     renderMiningUI();
   } else {
-    // No replacement found, hide the slot
     currentMiningSlots[index] = null;
     showToast('No replacement card found. Slot removed.', 'error');
     renderMiningUI();
@@ -1483,18 +1479,17 @@ async function loadDailyCombo() {
   const satScreen = document.getElementById('comboSaturdayScreen');
   const sunScreen = document.getElementById('comboSundayScreen');
 
-  // ✅ NEW USER CHECK
   const createdAt = new Date(APP.profile?.created_at || 0);
   const isNewUser = (Date.now() - createdAt.getTime()) < (24 * 60 * 60 * 1000);
   
-  if (day === 0) { // Sunday
+  if (day === 0) {
     weekdayScreen.style.display = 'none';
     satScreen.style.display = 'none';
     sunScreen.style.display = 'block';
     return;
   }
   
-  if (day === 6) { // Saturday
+  if (day === 6) {
     weekdayScreen.style.display = 'none';
     satScreen.style.display = 'block';
     sunScreen.style.display = 'none';
@@ -1510,7 +1505,6 @@ async function loadDailyCombo() {
       return;
     }
 
-    // Fetch last 5 days combos
     const today = new Date();
     const fiveDaysAgo = new Date(today); fiveDaysAgo.setDate(today.getDate() - 5);
     const { data: combos } = await getSupabase().from('daily_combo')
@@ -1539,7 +1533,6 @@ async function loadDailyCombo() {
     return;
   }
 
-  // Monday - Friday
   weekdayScreen.style.display = 'block';
   satScreen.style.display = 'none';
   sunScreen.style.display = 'none';
@@ -1605,10 +1598,9 @@ async function completeDailyCombo(comboId) {
     );
     if (error || data?.error) throw new Error(data?.error || error.message);
     
-    // ✅ NEW: Handle reassignment
     if (data.reassigned) {
       showToast('You bought this from the Marketplace! Assigned a new card for you.', 'info');
-      loadDailyCombo(); // Reload UI to show the new card
+      loadDailyCombo(); 
       return;
     }
 
@@ -1623,7 +1615,6 @@ async function completeDailyCombo(comboId) {
   }
 }
 
-// ✅ NEW FIX: Use Disappearing Card to fill all missing days on Saturday
 async function useDisappearingForStreak() {
   if (!confirm('Use 1 Disappearing Card to fill ALL missing days? It will be consumed.')) return;
   
@@ -1638,7 +1629,7 @@ async function useDisappearingForStreak() {
     showToast('All missing days filled!', 'success');
     playSound('reward');
     await refreshLiveProfile();
-    loadDailyCombo(); // Reload to show all green
+    loadDailyCombo(); 
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -1664,7 +1655,6 @@ function loadWallet() {
   renderBankDetails();
   renderWalletHistory();
 
-  // ADMIN SIMULATION INJECTION (OWNER ONLY)
   const isAdmin = APP.profile?.email === 'solforeyx@gmail.com'; 
   const container = document.querySelector('#section-wallet .content-area');
   
@@ -1841,9 +1831,9 @@ async function submitWithdraw() {
   const useBonus = document.getElementById('useBonusCard').checked;
   const selectedBonusId = useBonus ? document.querySelector('input[name="bonusCardChoice"]:checked')?.value : null;
 
-  if (!isValidPin(pin)) { showToast('PIN must be 4 digits', 'error'); return; }
-  if (!amt || amt < (useBonus ? 5000 : 20000)) { showToast('Invalid amount', 'error'); return; }
-  if (useBonus && !selectedBonusId) { showToast('Please select a Bonus Card', 'error'); return; }
+  if (!isValidPin(pin)) { alert('PIN must be 4 digits'); return; }
+  if (!amt || amt < (useBonus ? 5000 : 20000)) { alert('Invalid amount'); return; }
+  if (useBonus && !selectedBonusId) { alert('Please select a Bonus Card'); return; }
   
   showLoading('Processing withdrawal...');
   try {
@@ -1851,7 +1841,6 @@ async function submitWithdraw() {
     const { data: { session } } = await sb.auth.getSession();
     const token = session?.access_token;
 
-    // ✅ DIRECT FETCH TO GET EXACT ERROR
     const res = await fetch('https://dxxhlaxdudtiktplwvbq.supabase.co/functions/v1/withdrawal', {
       method: 'POST',
       headers: {
@@ -1864,7 +1853,8 @@ async function submitWithdraw() {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      throw new Error(data.error || data.message || `Error ${res.status}: Withdrawal failed. Check if your bank details and PIN are correct.`);
+      alert("WITHDRAWAL FAILED: " + (data.error || data.message || `Error ${res.status}`));
+      throw new Error(data.error || data.message || `Error ${res.status}`);
     }
 
     showToast('Withdrawal requested successfully', 'success');
@@ -1872,7 +1862,7 @@ async function submitWithdraw() {
     await refreshLiveProfile();
     closeWithdrawModal(); loadWallet(); loadDashboard();
   } catch (err) {
-    showToast(err.message, 'error');
+    // Do nothing here, alert already showed it
   } finally {
     hideLoading();
   }
@@ -1975,13 +1965,11 @@ function loadSettings() {
     langEl.textContent = languageName(saved);
   }
 
-  // ✅ FIXED: Show "Set PIN" or "Change PIN"
   const pinLabel = document.getElementById('pinSettingsLabel');
   if (pinLabel) {
     pinLabel.textContent = APP.profile?.pin_hash ? 'Change PIN' : 'Set PIN';
   }
 
-  // ✅ FIXED: Mode switch UI update
   const mode = localStorage.getItem('pandacard_mode') || 'demo';
   const btnDemo = document.getElementById('modeBtnDemo');
   const btnLive = document.getElementById('modeBtnLive');
@@ -2038,10 +2026,9 @@ async function savePin() {
   
   showLoading('Saving PIN...');
   try {
-    // ✅ FIXED: Use the new RPC to bypass the trigger
     const { error } = await getSupabase().rpc('update_user_pin', { p_pin_hash: demoHashPassword(newP) });
     if (error) throw error;
-    await refreshLiveProfile(); // Refresh to update UI
+    await refreshLiveProfile(); 
     showToast('PIN saved', 'success');
     closePinModal();
     loadSettings();
@@ -2175,7 +2162,6 @@ async function loadNotifications() {
 async function markNotifRead(id) {
   await getSupabase().from('notifications').update({ read: true }).eq('id', id);
   
-  // ✅ CLEAR FROM OS NOTIFICATION BAR
   if ('serviceWorker' in navigator) {
     const reg = await navigator.serviceWorker.ready;
     const notifs = await reg.getNotifications();
@@ -2188,7 +2174,6 @@ async function markNotifRead(id) {
 async function markAllNotificationsRead() {
   await getSupabase().from('notifications').update({ read: true }).eq('user_id', APP.user.id);
   
-  // ✅ CLEAR FROM OS NOTIFICATION BAR
   await clearOsNotifications();
 
   loadNotifications();
@@ -2214,7 +2199,6 @@ function loadReferral() {
   const coinEl = document.getElementById('referralCoinsEarned');
   if (coinEl) coinEl.textContent = '0';
 
-  // ADMIN SIMULATION INJECTION (OWNER ONLY)
   const isAdmin = p.email === 'solforeyx@gmail.com';
   const container = document.getElementById('section-referral').querySelector('.content-area');
   
@@ -2522,7 +2506,6 @@ async function refreshLiveProfile() {
   const sb = getSupabase();
   if (!sb) return null;
   
-  // ✅ FIXED: Added ceiling_price to the select query
   const { data, error } = await sb.from('users').select('*, inventory(card_id, quantity, marketplace_quantity, trade_quantity, ceiling_price)').eq('id', APP.user.id).single();
   
   if (data) {
@@ -2534,7 +2517,7 @@ async function refreshLiveProfile() {
             quantity: i.quantity,
             marketplace_quantity: i.marketplace_quantity || 0,
             trade_quantity: i.trade_quantity || 0,
-            ceiling_price: i.ceiling_price // ✅ Added
+            ceiling_price: i.ceiling_price
           };
         }
       });
@@ -2552,7 +2535,7 @@ async function refreshLiveProfile() {
 }
 
 // ============================================================
-// LOAD CARDS (KEEPS ALL CARDS IN MEMORY FOR MINING)
+// LOAD CARDS
 // ============================================================
 async function loadCards() {
   try {
@@ -2563,7 +2546,6 @@ async function loadCards() {
     
     const now = new Date().toISOString();
     
-    // ✅ 24-HOUR FAILSAFE: If a card is 'newly' but older than 24h, force it to its proper status
     APP.cards = (data || []).map(c => {
       if (c.status === 'newly' && c.created_at) {
         const hoursSinceCreated = (Date.now() - new Date(c.created_at).getTime()) / 3600000;
@@ -2585,7 +2567,6 @@ async function loadCards() {
       }
       return true; 
     });
-    // NOTE: The 20% hiding logic is NOT applied here anymore. It is applied in renderMarketplaceGrid().
 
   } catch (e) {
     console.error('loadCards failed', e);
