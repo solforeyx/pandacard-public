@@ -1236,12 +1236,17 @@ async function loadMining() {
   const sessionSlot = currentHour < 12 ? 'AM' : 'PM';
 
   // 3. Check if Assignment exists in DB
-  let { data: assignment } = await sb.from('daily_mining')
+  let { data: assignment, error: fetchErr } = await sb.from('daily_mining')
     .select('*')
     .eq('user_id', APP.user.id)
     .eq('session_date', today)
     .eq('session_slot', sessionSlot)
     .maybeSingle();
+
+  if (fetchErr) {
+    document.getElementById('miningCostInfo').textContent = "DB Error: " + fetchErr.message;
+    return;
+  }
 
   // ✅ NEW FIX: If assignment exists but has 0 cards (stale data), delete it so we can generate new ones
   if (assignment && (!assignment.card_ids || assignment.card_ids.length === 0)) {
@@ -1251,6 +1256,11 @@ async function loadMining() {
 
   // 4. If no assignment, generate it on the frontend!
   if (!assignment) {
+    if (!APP.cards || APP.cards.length === 0) {
+       document.getElementById('miningCostInfo').textContent = "No cards loaded in app. Please refresh the app.";
+       return;
+    }
+
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
@@ -1270,6 +1280,11 @@ async function loadMining() {
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
     const picked = shuffled.slice(0, 3).map(c => c.id);
 
+    if (picked.length === 0) {
+       document.getElementById('miningCostInfo').textContent = "No eligible cards available to assign.";
+       return;
+    }
+
     // ✅ Delete old AM session if we are currently in PM
     if (sessionSlot === 'PM') {
       await sb.from('daily_mining').delete()
@@ -1287,7 +1302,12 @@ async function loadMining() {
       completed: false
     }).select().single();
 
-    if (!insErr) assignment = newAssign;
+    if (insErr) {
+      // This will tell you if the RLS policy is blocking it!
+      document.getElementById('miningCostInfo').textContent = "Save Error: " + insErr.message + ". (Did you run the RLS SQL?)";
+      return;
+    }
+    assignment = newAssign;
   }
 
   // 5. Render the UI
@@ -1827,22 +1847,25 @@ async function submitWithdraw() {
   
   showLoading('Processing withdrawal...');
   try {
-    const { data, error } = await getSupabase().functions.invoke('withdrawal', { 
-      body: { amount: amt, pin, useBonusCard: useBonus, bonusCardId: selectedBonusId } 
+    const sb = getSupabase();
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+
+    // ✅ DIRECT FETCH TO GET EXACT ERROR
+    const res = await fetch('https://dxxhlaxdudtiktplwvbq.supabase.co/functions/v1/withdrawal', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ amount: amt, pin, useBonusCard: useBonus, bonusCardId: selectedBonusId })
     });
 
-    // ✅ NEW: Extract the exact error message from the backend
-    if (error) {
-      let actualError = error.message;
-      try {
-        // Supabase hides the response body in an object called 'context'
-        const errorBody = await error.context.json();
-        actualError = errorBody.error || errorBody.message || actualError;
-      } catch (e) {}
-      throw new Error(actualError);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.error || data.message || `Error ${res.status}: Withdrawal failed. Check if your bank details and PIN are correct.`);
     }
-    
-    if (data?.error) throw new Error(data.error);
 
     showToast('Withdrawal requested successfully', 'success');
     playSound('reward');
