@@ -672,7 +672,7 @@ function switchDashTab(tab) {
 }
 
 // ============================================================
-// MARKETPLACE
+// MARKETPLACE (WITH 20% HIDING PRESERVED)
 // ============================================================
 function renderMarketplaceGrid() {
   const grid = document.getElementById('marketplaceGrid');
@@ -682,12 +682,25 @@ function renderMarketplaceGrid() {
     return;
   }
 
+  // ✅ APPLY 20% HIDING ONLY TO MARKETPLACE VIEW
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
+  const visiblePct = 80;
+  
+  const visibleCards = APP.cards.filter(c => {
+    if (c.is_disappearing) return true;
+    const hashString = `${userSeed}-${c.id}`;
+    let hash = 0;
+    for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
+    return Math.abs(hash) % 100 < visiblePct;
+  });
+
   const inv = getInventory();
   const grouped = { disappearing: [], bonus: [], vip: [], standard: [], newly: [] };
   
   let disappearingSeen = 0;
 
-  APP.cards.forEach(c => {
+  visibleCards.forEach(c => {
     if (c.is_disappearing && c.is_active) {
       if (disappearingSeen < 1) { grouped.disappearing.push(c); disappearingSeen++; }
     }
@@ -1194,22 +1207,17 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING (FIXED LOGIC)
+// MINING (FULL FRONTEND LOGIC)
 // ============================================================
 let currentMiningSlots = [null, null, null];
 
 async function loadMining() {
   const sb = getSupabase();
   if (!sb) return;
-  
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const currentHour = now.getUTCHours();
-  const sessionSlot = currentHour < 12 ? 'AM' : 'PM';
-  
-  // NEW USER CHECK based on CALENDAR DATE
+
+  // 1. New User Check (Created today)
   const createdDate = new Date(APP.profile?.created_at || 0).toDateString();
-  const todayDate = now.toDateString();
+  const todayDate = new Date().toDateString();
   
   if (createdDate === todayDate) {
     document.getElementById('miningCostInfo').textContent = "Your account is new. Mining starts tomorrow!";
@@ -1221,37 +1229,74 @@ async function loadMining() {
     return;
   }
 
-  const { data: assignment } = await sb.from('daily_mining')
+  // 2. Determine Session (AM/PM UTC)
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const currentHour = now.getUTCHours();
+  const sessionSlot = currentHour < 12 ? 'AM' : 'PM';
+
+  // 3. Check if Assignment exists in DB
+  let { data: assignment } = await sb.from('daily_mining')
     .select('*')
     .eq('user_id', APP.user.id)
     .eq('session_date', today)
     .eq('session_slot', sessionSlot)
     .maybeSingle();
 
-  const assignedCardIds = assignment?.card_ids || [];
-  
-  document.getElementById('miningSessionsUsed').textContent = (assignment?.completed ? '1' : '0') + '/2';
-  document.getElementById('miningStartBtn').disabled = true;
+  // 4. If no assignment, generate it on the frontend!
+  if (!assignment) {
+    const stage = getStage();
+    const cfg = getStageConfig(stage);
+    
+    // Filter cards by stage rules
+    let pool = APP.cards.filter(c => 
+      !c.is_bonus && !c.is_disappearing && c.is_active &&
+      (c.current_price || c.original_price) >= cfg.minCardPrice &&
+      (c.current_price || c.original_price) <= cfg.maxCardPrice
+    );
 
-  if (assignedCardIds.length === 0) {
-    document.getElementById('miningCostInfo').textContent = "No eligible cards for mining today.";
-    ['miningSlot1', 'miningSlot2', 'miningSlot3'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'none';
-    });
-    return;
+    // If pool is too small, widen the net
+    if (pool.length < 3) {
+      pool = APP.cards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
+    }
+
+    // Shuffle and pick 3
+    const shuffled = [...pool].sort(() => 0.5 - Math.random());
+    const picked = shuffled.slice(0, 3).map(c => c.id);
+
+    // ✅ Delete old AM session if we are currently in PM
+    if (sessionSlot === 'PM') {
+      await sb.from('daily_mining').delete()
+        .eq('user_id', APP.user.id)
+        .eq('session_date', today)
+        .eq('session_slot', 'AM');
+    }
+
+    // Save new assignment to DB
+    const { data: newAssign, error: insErr } = await sb.from('daily_mining').insert({
+      user_id: APP.user.id,
+      session_date: today,
+      session_slot: sessionSlot,
+      card_ids: picked,
+      completed: false
+    }).select().single();
+
+    if (!insErr) assignment = newAssign;
   }
 
-  document.getElementById('miningCostInfo').textContent = "Tap the cards to verify ownership.";
-  
-  currentMiningSlots = [...assignedCardIds];
-  renderMiningUI();
+  // 5. Render the UI
+  if (assignment) {
+    currentMiningSlots = assignment.card_ids || [];
+    document.getElementById('miningSessionsUsed').textContent = (assignment.completed ? '1' : '0') + '/2';
+    document.getElementById('miningCostInfo').textContent = "Tap the cards to verify ownership.";
+    renderMiningUI();
+  } else {
+    document.getElementById('miningCostInfo').textContent = "Error loading mining cards.";
+  }
 }
 
 function renderMiningUI() {
-  const s = Demo ? Demo.state() : null; // Check if demo exists, else live
   const inv = getInventory();
-  const b = getBalances();
   let allOwned = true;
   let filledSlots = 0;
 
@@ -1267,11 +1312,14 @@ function renderMiningUI() {
     
     filledSlots++;
     el.style.display = 'block';
-    el.className = 'card-item'; // Reset classes
+    el.className = 'card-item';
     el.onclick = null;
     
     const card = APP.cards.find(c => c.id === cardId);
-    if (!card) return;
+    if (!card) {
+      el.innerHTML = `<div style="padding:20px;text-align:center;font-size:10px;color:#999;">Card Missing</div>`;
+      return;
+    }
 
     const mktQty = (inv[card.id]?.marketplace_quantity || 0);
     const trdQty = (inv[card.id]?.trade_quantity || 0);
@@ -1299,7 +1347,7 @@ function renderMiningUI() {
     }
 
     el.innerHTML = `
-      <img src="${card.image_url}" style="width:100%;border-radius:8px;opacity:${opacity};" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+      <img src="${card.image_url || 'https://i.imgur.com/9aLmHyS.png'}" style="width:100%;border-radius:8px;opacity:${opacity};" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
       <div style="font-size:10px;font-weight:bold;margin-top:4px;">${card.name}</div>
       ${statusHtml}
     `;
@@ -1526,6 +1574,13 @@ async function completeDailyCombo(comboId) {
     );
     if (error || data?.error) throw new Error(data?.error || error.message);
     
+    // ✅ NEW: Handle reassignment
+    if (data.reassigned) {
+      showToast('You bought this from the Marketplace! Assigned a new card for you.', 'info');
+      loadDailyCombo(); // Reload UI to show the new card
+      return;
+    }
+
     showToast(`Combo complete! Earned ${data.total_dp} DP`, 'success');
     playSound('reward');
     await refreshLiveProfile();
@@ -2450,7 +2505,7 @@ async function refreshLiveProfile() {
 }
 
 // ============================================================
-// LOAD CARDS
+// LOAD CARDS (KEEPS ALL CARDS IN MEMORY FOR MINING)
 // ============================================================
 async function loadCards() {
   try {
@@ -2483,19 +2538,7 @@ async function loadCards() {
       }
       return true; 
     });
-
-    {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
-      const visiblePct = 80;
-      APP.cards = APP.cards.filter(c => {
-        if (c.is_disappearing) return true;
-        const hashString = `${userSeed}-${c.id}`;
-        let hash = 0;
-        for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
-        return Math.abs(hash) % 100 < visiblePct;
-      });
-    }
+    // NOTE: The 20% hiding logic is NOT applied here anymore. It is applied in renderMarketplaceGrid().
 
   } catch (e) {
     console.error('loadCards failed', e);
