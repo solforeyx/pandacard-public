@@ -237,10 +237,17 @@ async function subscribeUserToPush(isSilent = false) {
 
   try {
     const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
+    
+    // Check if already subscribed
+    let subscription = await registration.pushManager.getSubscription();
+    
+    // If not, subscribe
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
 
     const sb = getSupabase();
     if (sb && APP.user) {
