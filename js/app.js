@@ -2,25 +2,12 @@
 // PANDA CARD — MAIN APP (LIVE MODE ONLY)
 // ============================================================
 
-// ✅ AUTO-CLEAR CACHE (Forces PWA to load new code)
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    for(let registration of registrations) {
-      registration.unregister();
-    }
-  });
-  if ('caches' in window) {
-    caches.keys().then((names) => {
-      names.forEach(name => { caches.delete(name); });
-    });
-  }
-}
-
 const VAPID_PUBLIC_KEY = 'BCVPOe8TdN7OghMRpOHMZkPZ1F7oU7mKApl3LcEyDEM9I7Q1fLb_oBq-LX7k3ASviUG73jqnx7FRHbkdiX4M9kE';
 
+// ✅ RESTORED SERVICE WORKER (Fixes Offline, 404, and Notifications)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js?v=' + new Date().getTime())
+    navigator.serviceWorker.register('/service-worker.js')
       .then(reg => console.log('SW registered:', reg.scope))
       .catch(err => console.warn('SW registration failed:', err));
   });
@@ -33,6 +20,7 @@ const APP = {
   user: null,
   profile: null,
   cards: [],
+  assignedComboCardId: null, // Tracks your daily combo to hide from market
   dashTab: 'marketplace',
   tradeTab: 'buy',
   tradeFilter: 'all',
@@ -73,7 +61,7 @@ async function clearOsNotifications() {
 }
 
 // ============================================================
-// GETTERS (LIVE ONLY)
+// GETTERS
 // ============================================================
 function getBalances() {
   const p = APP.profile;
@@ -397,10 +385,10 @@ function renderChecklist() {
 }
 
 // ============================================================
-// THE NEW GRAPH LOGIC (MATCHING SAMPLE)
+// THE NEW GRAPH LOGIC (ACCURATE CASH FLOW)
 // ============================================================
 let chartInstance = null;
-let currentColourStage = 2; // Start at Yellow
+let currentColourStage = 2; 
 
 const COLOURS = [
     { name: "Red",    hex: "#ff4d5a" },
@@ -454,15 +442,15 @@ async function renderPortfolioChart() {
 
   const events = [];
   let runningTotal = 0;
-  currentColourStage = 2; // Reset stage for full render
+  currentColourStage = 2;
 
   // Initial state
   events.push({
     id: 0,
     type: 'start',
-    title: 'Starting Inventory',
+    title: 'Starting Balance',
     shortLabel: 'Start',
-    assetName: 'Inventory',
+    assetName: 'Cash Flow',
     quantityLabel: 'Starting point',
     transactionAmount: 0,
     change: 0,
@@ -476,32 +464,41 @@ async function renderPortfolioChart() {
     let type = 'adjustment';
     let change = 0;
     let title = '';
-    
-    const cardId = tx.card_id || (tx.metadata && tx.metadata.card_id);
-    const card = APP.cards.find(c => c.id === cardId);
-    const val = card ? (card.current_price || card.original_price || 0) : (tx.amount || 0);
+    let val = Number(tx.amount) || 0; // ✅ Use ACTUAL amount from tx
 
-    if (tx.type === 'marketplace_buy' || tx.type === 'trade_buy') {
-      type = 'card_purchase';
-      change = val;
+    if (tx.type === 'deposit') {
+        type = 'coin_purchase'; // Green
+        change = val;
+        title = 'Deposit';
+    } else if (tx.type === 'marketplace_buy' || tx.type === 'trade_buy') {
+      type = 'card_purchase'; // Red
+      change = -val; // Money leaves deposit
       title = 'Card Purchased';
     } else if (tx.type === 'trade_sell') {
-      type = 'someone_bought_card';
-      change = -val;
-      title = 'Someone Bought My Card';
+      type = 'someone_bought_card'; // Blue
+      change = val; // Money enters earnings
+      title = 'Card Sold';
     } else if (tx.type === 'mining_reward') {
-      type = 'mining';
-      change = -val;
-      title = 'Card Used for Mining';
+      type = 'mining'; // Blue
+      change = val; 
+      title = 'Mining Reward';
     } else if (tx.type === 'daily_combo') {
-      type = 'daily_combo';
-      change = -val;
-      title = 'Card Used for Daily Combo';
+      type = 'daily_combo'; // Gold
+      change = val; 
+      title = 'Combo Reward';
     } else if (tx.type === 'coin_buy') {
       type = 'coin_purchase';
-      change = 0; // Does not affect inventory value
-      title = 'Coins Purchased';
+      change = -val; 
+      title = 'Coins Bought';
+    } else if (tx.type === 'withdraw') {
+        type = 'value_decrease';
+        change = -val;
+        title = 'Withdrawal';
+    } else {
+        return; // Skip Admin Adjust and unknown types
     }
+
+    if (change === 0) return;
 
     if (change > 0) currentColourStage = Math.min(4, currentColourStage + 1);
     else if (change < 0) currentColourStage = Math.max(0, currentColourStage - 1);
@@ -514,9 +511,9 @@ async function renderPortfolioChart() {
       type,
       title,
       shortLabel: title,
-      assetName: card ? card.name : 'Card',
-      quantityLabel: '1 item',
-      transactionAmount: val,
+      assetName: 'Cash Flow',
+      quantityLabel: '1 event',
+      transactionAmount: Math.abs(val),
       change: change,
       before: before,
       after: runningTotal,
@@ -525,47 +522,16 @@ async function renderPortfolioChart() {
     });
   });
 
-  // Adjust for current actual total
-  const inv = getInventory();
-  let currentTotal = 0;
-  Object.keys(inv).forEach(id => {
-    const c = APP.cards.find(x => x.id === id);
-    if (c) currentTotal += (c.current_price || c.original_price || 0) * (inv[id]?.quantity || 0);
-  });
-  
-  if (events.length > 0 && events[events.length-1].after !== currentTotal) {
-      const diff = currentTotal - events[events.length-1].after;
-      if (diff > 0) currentColourStage = Math.min(4, currentColourStage + 1);
-      else if (diff < 0) currentColourStage = Math.max(0, currentColourStage - 1);
-      
-      events.push({
-          id: 'adj',
-          type: 'adjustment',
-          title: 'Inventory Adjustment',
-          shortLabel: 'Adjustment',
-          assetName: 'Manual',
-          quantityLabel: 'Balance fix',
-          transactionAmount: Math.abs(diff),
-          change: diff,
-          before: events[events.length-1].after,
-          after: currentTotal,
-          colourStage: currentColourStage,
-          time: new Date()
-      });
-  }
-
-  // Filter by days
   const cutoff = Date.now() - (APP.portfolioDays * 24 * 60 * 60 * 1000);
   const filteredEvents = events.filter(e => e.time.getTime() >= cutoff);
   
-  // If we filtered out the start, make the first event the new start
   if (filteredEvents.length > 0 && filteredEvents[0].type !== 'start') {
       filteredEvents.unshift({
           id: 0,
           type: 'start',
           title: 'Start of Period',
           shortLabel: 'Start',
-          assetName: 'Inventory',
+          assetName: 'Cash Flow',
           quantityLabel: 'Starting point',
           transactionAmount: 0,
           change: 0,
@@ -642,30 +608,28 @@ function drawMarkers(events, layer) {
         
         if (index === 0) {
             btn.classList.add('start-marker');
-        }
-
-        const iconColor = ICON_COLORS[event.type] || '#FFD700';
-        btn.style.left = pos.x + 'px';
-        btn.style.top = pos.y + 'px';
-        btn.style.setProperty('--icon-color', iconColor);
-        
-        if (index !== 0) {
+            btn.innerHTML = `<i data-lucide="circle-dot"></i>`;
+        } else {
+            const iconColor = ICON_COLORS[event.type] || '#FFD700';
+            btn.style.setProperty('--icon-color', iconColor);
+            
             const iconName = ICONS[event.type] || 'activity';
             btn.innerHTML = `
                 <i data-lucide="${iconName}"></i>
                 <span class="marker-label">
-                    ${escapeHtml(event.shortLabel)}<br>
-                    <span style="color:${iconColor}; font-weight:bold;">${escapeHtml(formatPrice(event.transactionAmount))}</span>
+                    ${escapeHtml(event.title)}<br>
+                    <span style="color:${iconColor};">${escapeHtml(formatPrice(event.transactionAmount))}</span>
                 </span>
             `;
-            btn.title = `${event.title} | ${formatPrice(event.transactionAmount)} | Inv: ${formatPrice(event.after)}`;
         }
 
+        btn.style.left = pos.x + 'px';
+        btn.style.top = pos.y + 'px';
         layer.appendChild(btn);
     });
 
     if (window.lucide) {
-        window.lucide.createIcons({ root: layer, attrs: { 'stroke-width': 1.8 } });
+        window.lucide.createIcons({ root: layer, attrs: { 'stroke-width': 2 } });
     }
 }
 
@@ -686,9 +650,9 @@ function switchDashTab(tab) {
 }
 
 // ============================================================
-// MARKETPLACE (WITH 20% HIDING PRESERVED)
+// MARKETPLACE (HIDES ASSIGNED COMBO CARD)
 // ============================================================
-function renderMarketplaceGrid() {
+async function renderMarketplaceGrid() {
   const grid = document.getElementById('marketplaceGrid');
   if (!grid) return;
   if (!APP.cards.length) {
@@ -696,12 +660,20 @@ function renderMarketplaceGrid() {
     return;
   }
 
+  // 1. Fetch today's assigned combo card
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: combo } = await getSupabase().from('daily_combo').select('assigned_card_id').eq('user_id', APP.user.id).eq('combo_date', today).maybeSingle();
+  APP.assignedComboCardId = combo?.assigned_card_id || null;
+
+  // 2. Apply 20% hiding + Combo hiding
   const todayStr = new Date().toISOString().slice(0, 10);
   const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
   const visiblePct = 80;
   
   const visibleCards = APP.cards.filter(c => {
+    if (APP.assignedComboCardId && c.id === APP.assignedComboCardId) return false;
     if (c.is_disappearing) return true;
+    
     const hashString = `${userSeed}-${c.id}`;
     let hash = 0;
     for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
@@ -710,7 +682,6 @@ function renderMarketplaceGrid() {
 
   const inv = getInventory();
   const grouped = { disappearing: [], bonus: [], vip: [], standard: [], newly: [] };
-  
   let disappearingSeen = 0;
 
   visibleCards.forEach(c => {
@@ -1220,7 +1191,7 @@ function filterInventory() {
 }
 
 // ============================================================
-// MINING (FULL FRONTEND LOGIC)
+// MINING (FULL FRONTEND LOGIC WITH PERMANENT BLACKLIST)
 // ============================================================
 let currentMiningSlots = [null, null, null];
 
@@ -1270,10 +1241,24 @@ async function loadMining() {
        return;
     }
 
+    // ✅ 1. GET PERMANENT HISTORY (Blacklist)
+    const { data: pastMining } = await sb.from('daily_mining')
+      .select('card_ids')
+      .eq('user_id', APP.user.id);
+      
+    const minedBlacklist = new Set();
+    if (pastMining) {
+      pastMining.forEach(record => {
+        if (record.card_ids) {
+          record.card_ids.forEach(id => minedBlacklist.add(id));
+        }
+      });
+    }
+
     const todayStr = new Date().toISOString().slice(0, 10);
     const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
     
-    // ✅ FIX: Apply the 20% hiding filter to the mining pool!
+    // 2. Apply 20% hiding filter
     const visibleCards = APP.cards.filter(c => {
       if (c.is_disappearing) return true;
       const hashString = `${userSeed}-${c.id}`;
@@ -1285,22 +1270,26 @@ async function loadMining() {
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
+    // 3. Filter by stage, exclude bonus/disappearing, AND exclude the blacklist
     let pool = visibleCards.filter(c => 
       !c.is_bonus && !c.is_disappearing && c.is_active &&
+      !minedBlacklist.has(c.id) && 
       (c.current_price || c.original_price) >= cfg.minCardPrice &&
       (c.current_price || c.original_price) <= cfg.maxCardPrice
     );
 
     if (pool.length < 3) {
-      pool = visibleCards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
+      pool = visibleCards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active && !minedBlacklist.has(c.id));
     }
 
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
     const picked = shuffled.slice(0, 3).map(c => c.id);
 
+    // ✅ EDGE CASE: What if they have mined ALL eligible cards?
     if (picked.length === 0) {
-       alert("NO ELIGIBLE CARDS FOUND in your stage price range.");
-       document.getElementById('miningCostInfo').textContent = "No eligible cards.";
+       alert("You have mined all eligible cards in your current stage! You must rank up to access new cards for mining.");
+       document.getElementById('miningCostInfo').textContent = "All eligible cards have been mined.";
+       document.getElementById('miningStartBtn').disabled = true;
        return;
     }
 
@@ -1384,8 +1373,8 @@ function renderMiningUI() {
       statusHtml = `<div style="color:#FF4444;font-size:9px;font-weight:bold;">Need to buy</div>`;
       el.onclick = () => {
         showToast('Please buy this card from the Marketplace', 'info');
-        navigateTo('dashboard'); // ✅ FIX: Go to dashboard
-        setTimeout(() => { switchDashTab('marketplace'); }, 300); // ✅ FIX: Open marketplace tab
+        navigateTo('dashboard'); 
+        setTimeout(() => { switchDashTab('marketplace'); }, 300); 
       };
     }
 
@@ -1741,9 +1730,29 @@ async function renderWalletHistory() {
   const el = document.getElementById('walletHistory');
   if (!el) return;
   
-  const { data } = await getSupabase().from('transactions').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(10);
+  const { data } = await getSupabase().from('transactions').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(15);
   if (!data || !data.length) { el.textContent = 'No recent transactions.'; return; }
-  el.innerHTML = data.map(tx => `<div class="bank-info" style="padding:8px 0;"><span class="label" style="text-transform:capitalize;">${escapeHtml(tx.type.replace('_', ' '))}</span><span class="value">${tx.amount ? formatPrice(Math.abs(tx.amount)) : '—'}</span></div>`).join('');
+  
+  // ✅ MEANINGFUL DESCRIPTIONS
+  el.innerHTML = data.map(tx => {
+    let desc = tx.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    let amtColor = '#666';
+    let amtStr = '—';
+
+    const metaCard = tx.metadata?.card_name || tx.metadata?.card || 'Card';
+
+    if (tx.type === 'marketplace_buy') { desc = `Bought ${metaCard}`; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'trade_buy') { desc = `Bought ${metaCard} (Trade)`; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'trade_sell') { desc = `Sold ${metaCard}`; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'deposit') { desc = 'Deposited Funds'; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'withdraw') { desc = 'Withdrawal Request'; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'mining_reward') { desc = 'Mining Reward'; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'coin_buy') { desc = 'Coins Purchased'; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'daily_combo') { desc = 'Daily Combo Reward'; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
+    else if (tx.type === 'admin_adjust') { desc = `Admin: ${tx.metadata?.reason || 'Adjustment'}`; amtColor = '#666'; amtStr = formatPrice(tx.amount); }
+
+    return `<div class="bank-info" style="padding:8px 0; border-bottom:1px solid #eee;"><span class="label">${escapeHtml(desc)}</span><span class="value" style="color:${amtColor}; font-weight:bold;">${amtStr}</span></div>`;
+  }).join('');
 }
 
 function openDepositModal() {
