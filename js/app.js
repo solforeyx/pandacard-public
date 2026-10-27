@@ -1270,17 +1270,29 @@ async function loadMining() {
        return;
     }
 
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
+    
+    // ✅ FIX: Apply the 20% hiding filter to the mining pool!
+    const visibleCards = APP.cards.filter(c => {
+      if (c.is_disappearing) return true;
+      const hashString = `${userSeed}-${c.id}`;
+      let hash = 0;
+      for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
+      return Math.abs(hash) % 100 < 80; // 80% visible
+    });
+
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
-    let pool = APP.cards.filter(c => 
+    let pool = visibleCards.filter(c => 
       !c.is_bonus && !c.is_disappearing && c.is_active &&
       (c.current_price || c.original_price) >= cfg.minCardPrice &&
       (c.current_price || c.original_price) <= cfg.maxCardPrice
     );
 
     if (pool.length < 3) {
-      pool = APP.cards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
+      pool = visibleCards.filter(c => !c.is_bonus && !c.is_disappearing && c.is_active);
     }
 
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
@@ -1372,9 +1384,8 @@ function renderMiningUI() {
       statusHtml = `<div style="color:#FF4444;font-size:9px;font-weight:bold;">Need to buy</div>`;
       el.onclick = () => {
         showToast('Please buy this card from the Marketplace', 'info');
-        navigateTo('trade');
-        document.getElementById('tradeSearchInput').value = card.name;
-        filterTradeListings();
+        navigateTo('dashboard'); // ✅ FIX: Go to dashboard
+        setTimeout(() => { switchDashTab('marketplace'); }, 300); // ✅ FIX: Open marketplace tab
       };
     }
 
@@ -1404,7 +1415,18 @@ function handleTradeCardReRoll(index, card) {
   const cfg = getStageConfig(stage);
   const inv = getInventory();
   
-  const pool = APP.cards.filter(c => 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
+
+  const visibleCards = APP.cards.filter(c => {
+    if (c.is_disappearing) return true;
+    const hashString = `${userSeed}-${c.id}`;
+    let hash = 0;
+    for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
+    return Math.abs(hash) % 100 < 80; 
+  });
+  
+  const pool = visibleCards.filter(c => 
     !c.is_bonus && 
     !c.is_disappearing && 
     c.is_active &&
