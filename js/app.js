@@ -1099,6 +1099,8 @@ async function renderTradeBuyListings() {
   const inv = getInventory();
 
   let html = '';
+  let foundAny = false;
+
   listings.forEach(l => {
     const card = APP.cards.find(c => c.id === (l.cardId || l.card_id));
     if (!card) return;
@@ -1108,6 +1110,7 @@ async function renderTradeBuyListings() {
       if (status !== APP.tradeFilter) return;
     }
     
+    foundAny = true;
     const qty = inv[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv[card.id] || 0);
     const owned = qty > 0;
 
@@ -1122,7 +1125,42 @@ async function renderTradeBuyListings() {
         <button class="buy-btn" ${owned ? 'disabled style="background:#ccc;color:#666;"' : ''} onclick="buyFromTrade('${l.id}')">${owned ? 'Owned' : 'Buy'}</button>
       </div>`;
   });
+
+  // ✅ NEW LOGIC: If search term exists and no listings found, check APP.cards for the Demand button
+  if (!foundAny && APP.tradeSearch) {
+     const matchingCards = APP.cards.filter(c => c.name.toLowerCase().includes(APP.tradeSearch));
+     matchingCards.forEach(card => {
+        if (card.is_bonus || card.is_disappearing) return; 
+        foundAny = true;
+        html += `
+          <div class="listing-item" style="display:flex; align-items:center; gap:12px; padding:12px; border: 1px dashed #ccc;">
+            <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" style="width:50px; height:65px; border-radius:8px; object-fit:cover;" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
+            <div class="info" style="flex:1;">
+              <div class="name" style="color:#1A1A2E; font-weight:700;">${escapeHtml(card.name)}</div>
+              <div class="price" style="color:#FFD700; font-weight:800;">${formatPrice(card.current_price || card.original_price || 0)}</div>
+              <div class="units" style="font-size:11px; color:#FF4444;">No listings available</div>
+            </div>
+            <button class="buy-btn" style="background:#4A90D9;" onclick="demandCard('${card.id}')">Demand</button>
+          </div>`;
+     });
+  }
+
   el.innerHTML = html || '<div class="empty-state"><span class="material-icons">store</span><p>No listings available</p></div>';
+}
+
+// ✅ NEW FUNCTION: Send demand to backend
+async function demandCard(cardId) {
+  if (!confirm('Send a demand for this card? Sellers will see that you are looking for it.')) return;
+  showLoading('Sending demand...');
+  try {
+    const { data, error } = await getSupabase().functions.invoke('demand-card', { body: { cardId } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    showToast('Demand recorded!', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 async function renderTradeSellListings() {
@@ -1476,6 +1514,7 @@ function handleTradeCardReRoll(index, card) {
   }
 }
 
+// ✅ FIXED: EXACT ERROR HANDLING FOR MINING
 async function startMining() {
   const validSlots = currentMiningSlots.filter(id => id !== null);
   if (validSlots.length === 0) return showToast('No cards selected', 'error');
@@ -1492,8 +1531,25 @@ async function startMining() {
   
   showLoading('Mining...');
   try {
-    const { data, error } = await getSupabase().functions.invoke('mining', { body: { cardIds: validSlots } });
-    if (error || data?.error) throw new Error(data?.error || error.message);
+    const sb = getSupabase();
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+
+    const res = await fetch('https://dxxhlaxdudtiktplwvbq.supabase.co/functions/v1/mining', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ cardIds: validSlots })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert("MINING FAILED: " + (data.error || data.message || `Error ${res.status}`));
+      throw new Error(data.error || data.message || `Error ${res.status}`);
+    }
     
     showToast('Mined successfully!', 'success');
     playSound('reward');
@@ -1505,7 +1561,7 @@ async function startMining() {
     loadMining();
     updateBalanceUI();
   } catch (err) {
-    showToast(err.message, 'error');
+    // Do nothing, alert already showed it
   } finally {
     hideLoading();
   }
@@ -2876,3 +2932,4 @@ window.togglePushNotifications = togglePushNotifications;
 window.installPWA = installPWA;
 window.closeInstallModal = closeInstallModal;
 window.claimBonusCard = claimBonusCard;
+window.demandCard = demandCard; // ✅ EXPORTED
