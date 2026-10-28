@@ -20,7 +20,7 @@ const APP = {
   user: null,
   profile: null,
   cards: [],
-  assignedComboCardId: null, // Tracks your daily combo to hide from market
+  assignedComboCardId: null, 
   dashTab: 'marketplace',
   tradeTab: 'buy',
   tradeFilter: 'all',
@@ -238,10 +238,8 @@ async function subscribeUserToPush(isSilent = false) {
   try {
     const registration = await navigator.serviceWorker.ready;
     
-    // Check if already subscribed
     let subscription = await registration.pushManager.getSubscription();
     
-    // If not, subscribe
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -261,7 +259,7 @@ async function subscribeUserToPush(isSilent = false) {
     }
   } catch (err) {
     console.error('Push subscription failed:', err);
-    if (!isSilent) showToast('Failed to enable push notifications: ' + err.message, 'error');
+    if (!isSilent) showToast('Failed to enable push: ' + err.message, 'error');
   }
 }
 
@@ -441,7 +439,6 @@ async function renderPortfolioChart() {
   if (chartInstance) { try { chartInstance.destroy(); } catch (e) {} }
   if (markerLayer) markerLayer.innerHTML = '';
 
-  // 1. Fetch all transactions
   const { data: txs } = await getSupabase().from('transactions')
     .select('*')
     .eq('user_id', APP.user.id)
@@ -451,7 +448,6 @@ async function renderPortfolioChart() {
   let runningTotal = 0;
   currentColourStage = 2;
 
-  // Initial state
   events.push({
     id: 0,
     type: 'start',
@@ -471,26 +467,26 @@ async function renderPortfolioChart() {
     let type = 'adjustment';
     let change = 0;
     let title = '';
-    let val = Number(tx.amount) || 0; // ✅ Use ACTUAL amount from tx
+    let val = Number(tx.amount) || 0;
 
     if (tx.type === 'deposit') {
-        type = 'coin_purchase'; // Green
+        type = 'coin_purchase'; 
         change = val;
         title = 'Deposit';
     } else if (tx.type === 'marketplace_buy' || tx.type === 'trade_buy') {
-      type = 'card_purchase'; // Red
-      change = -val; // Money leaves deposit
+      type = 'card_purchase'; 
+      change = -val; 
       title = 'Card Purchased';
     } else if (tx.type === 'trade_sell') {
-      type = 'someone_bought_card'; // Blue
-      change = val; // Money enters earnings
+      type = 'someone_bought_card'; 
+      change = val; 
       title = 'Card Sold';
     } else if (tx.type === 'mining_reward') {
-      type = 'mining'; // Blue
+      type = 'mining'; 
       change = val; 
       title = 'Mining Reward';
     } else if (tx.type === 'daily_combo') {
-      type = 'daily_combo'; // Gold
+      type = 'daily_combo'; 
       change = val; 
       title = 'Combo Reward';
     } else if (tx.type === 'coin_buy') {
@@ -502,7 +498,7 @@ async function renderPortfolioChart() {
         change = -val;
         title = 'Withdrawal';
     } else {
-        return; // Skip Admin Adjust and unknown types
+        return; 
     }
 
     if (change === 0) return;
@@ -667,12 +663,10 @@ async function renderMarketplaceGrid() {
     return;
   }
 
-  // 1. Fetch today's assigned combo card
   const today = new Date().toISOString().slice(0, 10);
   const { data: combo } = await getSupabase().from('daily_combo').select('assigned_card_id').eq('user_id', APP.user.id).eq('combo_date', today).maybeSingle();
   APP.assignedComboCardId = combo?.assigned_card_id || null;
 
-  // 2. Apply 20% hiding + Combo hiding
   const todayStr = new Date().toISOString().slice(0, 10);
   const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
   const visiblePct = 80;
@@ -910,7 +904,7 @@ async function claimBonusCard(cardId) {
 }
 
 // ============================================================
-// BUY FROM MARKETPLACE
+// BUY FROM MARKETPLACE (FIXED: SHOWS EXACT ERROR)
 // ============================================================
 async function buyFromMarketplace(cardId) {
   const card = APP.cards.find(c => c.id === cardId);
@@ -930,13 +924,26 @@ async function buyFromMarketplace(cardId) {
     const sb = getSupabase();
     if (!sb) throw new Error('Supabase unavailable');
     const { data, error } = await sb.functions.invoke('marketplace-buy', { body: { cardId } });
-    if (error || data?.error) throw new Error((data && data.error) || error?.message);
+    
+    // ✅ Extract the EXACT error from the backend
+    if (error) {
+      let actualError = error.message;
+      try {
+        const errorBody = await error.context.json();
+        actualError = errorBody.error || errorBody.message || actualError;
+      } catch (e) {}
+      throw new Error(actualError);
+    }
+    
+    if (data?.error) throw new Error(data.error);
+
     showToast('Purchased!', 'success');
     playSound('reward');
     await refreshLiveProfile();
     loadDashboard();
   } catch (err) {
-    showToast(err.message || 'Purchase failed', 'error');
+    // ✅ Use alert so you cannot miss the error
+    alert("PURCHASE FAILED: " + (err.message || 'Purchase failed'));
     playSound('error');
   } finally {
     hideLoading();
@@ -1248,7 +1255,6 @@ async function loadMining() {
        return;
     }
 
-    // ✅ 1. GET PERMANENT HISTORY (Blacklist)
     const { data: pastMining } = await sb.from('daily_mining')
       .select('card_ids')
       .eq('user_id', APP.user.id);
@@ -1265,19 +1271,17 @@ async function loadMining() {
     const todayStr = new Date().toISOString().slice(0, 10);
     const userSeed = (APP.user?.id || 'live_seed') + '_' + todayStr;
     
-    // 2. Apply 20% hiding filter
     const visibleCards = APP.cards.filter(c => {
       if (c.is_disappearing) return true;
       const hashString = `${userSeed}-${c.id}`;
       let hash = 0;
       for (let i = 0; i < hashString.length; i++) hash = ((hash << 5) - hash) + hashString.charCodeAt(i);
-      return Math.abs(hash) % 100 < 80; // 80% visible
+      return Math.abs(hash) % 100 < 80;
     });
 
     const stage = getStage();
     const cfg = getStageConfig(stage);
     
-    // 3. Filter by stage, exclude bonus/disappearing, AND exclude the blacklist
     let pool = visibleCards.filter(c => 
       !c.is_bonus && !c.is_disappearing && c.is_active &&
       !minedBlacklist.has(c.id) && 
@@ -1292,7 +1296,6 @@ async function loadMining() {
     const shuffled = [...pool].sort(() => 0.5 - Math.random());
     const picked = shuffled.slice(0, 3).map(c => c.id);
 
-    // ✅ EDGE CASE: What if they have mined ALL eligible cards?
     if (picked.length === 0) {
        alert("You have mined all eligible cards in your current stage! You must rank up to access new cards for mining.");
        document.getElementById('miningCostInfo').textContent = "All eligible cards have been mined.";
@@ -1740,7 +1743,6 @@ async function renderWalletHistory() {
   const { data } = await getSupabase().from('transactions').select('*').eq('user_id', APP.user.id).order('created_at', { ascending: false }).limit(15);
   if (!data || !data.length) { el.textContent = 'No recent transactions.'; return; }
   
-  // ✅ MEANINGFUL DESCRIPTIONS
   el.innerHTML = data.map(tx => {
     let desc = tx.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     let amtColor = '#666';
@@ -1752,11 +1754,32 @@ async function renderWalletHistory() {
     else if (tx.type === 'trade_buy') { desc = `Bought ${metaCard} (Trade)`; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
     else if (tx.type === 'trade_sell') { desc = `Sold ${metaCard}`; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
     else if (tx.type === 'deposit') { desc = 'Deposited Funds'; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
-    else if (tx.type === 'withdraw') { desc = 'Withdrawal Request'; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
     else if (tx.type === 'mining_reward') { desc = 'Mining Reward'; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
     else if (tx.type === 'coin_buy') { desc = 'Coins Purchased'; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
     else if (tx.type === 'daily_combo') { desc = 'Daily Combo Reward'; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
-    else if (tx.type === 'admin_adjust') { desc = `Admin: ${tx.metadata?.reason || 'Adjustment'}`; amtColor = '#666'; amtStr = formatPrice(tx.amount); }
+    
+    // ✅ Handle Withdrawals properly
+    else if (tx.type === 'withdraw') { 
+      const status = tx.metadata?.status || 'pending';
+      if (status === 'rejected') {
+        desc = `Withdrawal Rejected (Refunded)`; 
+        amtColor = '#22C55E'; 
+        amtStr = `+${formatPrice(tx.amount)}`;
+      } else if (status === 'paid') {
+        desc = `Withdrawal Paid`; 
+        amtColor = '#FF4444'; 
+        amtStr = `-${formatPrice(tx.amount)}`;
+      } else {
+        desc = `Withdrawal Pending`; 
+        amtColor = '#FFD700'; 
+        amtStr = `-${formatPrice(tx.amount)}`;
+      }
+    }
+    else if (tx.type === 'admin_adjust') { 
+        desc = `Admin: ${tx.metadata?.reason || 'Adjustment'}`; 
+        amtColor = '#666'; 
+        amtStr = formatPrice(tx.amount); 
+    }
 
     return `<div class="bank-info" style="padding:8px 0; border-bottom:1px solid #eee;"><span class="label">${escapeHtml(desc)}</span><span class="value" style="color:${amtColor}; font-weight:bold;">${amtStr}</span></div>`;
   }).join('');
