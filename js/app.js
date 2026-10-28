@@ -756,7 +756,14 @@ function renderCardTile(card, inv) {
   else if (card.status === 'newly') badge = '<span class="badge-top newly">NEW</span>';
 
   const qty = inv?.[card.id]?.quantity !== undefined ? inv[card.id].quantity : (inv?.[card.id] || 0);
-  const owned = qty > 0 ? '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>' : '';
+  const isOwnedEver = APP.profile?.owned_ever?.includes(card.id);
+  
+  let ownedTag = '';
+  if (qty > 0) {
+    ownedTag = '<div style="position:absolute; bottom:8px; right:8px; background:#22C55E; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">OWNED</div>';
+  } else if (isOwnedEver) {
+    ownedTag = '<div style="position:absolute; bottom:8px; right:8px; background:#4A90D9; color:#fff; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700; z-index:2;">SEE TRADE</div>';
+  }
 
   let timerHtml = '';
   if (card.is_disappearing && card.disappear_expires_at && qty === 0) {
@@ -789,7 +796,7 @@ function renderCardTile(card, inv) {
     <div class="card-item ${frameClass}" data-card-id="${card.id}" onclick="openCardModal('${card.id}')">
       <div class="card-image">
         <img src="${escapeHtml(card.image_url || 'https://i.imgur.com/9aLmHyS.png')}" alt="${escapeHtml(card.name)}" loading="lazy" onerror="this.src='https://i.imgur.com/9aLmHyS.png'" />
-        ${badge}${owned}${timerHtml}
+        ${badge}${ownedTag}${timerHtml}
       </div>
       <div class="card-name">${escapeHtml(card.name)}</div>
       ${priceHtml}
@@ -966,14 +973,16 @@ function openSellModal(cardId) {
   playSound('click');
   const b = getBalances();
   const floor = card.original_price || card.current_price || 0;
-  const ceiling = invItem?.ceiling_price || (floor * 10);
-  const suggestedPrice = card.current_price || floor;
+  
+  // ✅ Use the dynamically calculated ceiling from the database!
+  const ceiling = invItem?.ceiling_price || (floor * 10); 
+  const suggestedPrice = Math.min(ceiling, card.current_price || floor);
 
   document.getElementById('sellTitle').textContent = 'Sell ' + card.name;
   document.getElementById('sellBody').innerHTML = `
     <div style="background:#f0f0f5;border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:#666;">
       <div>Floor: <b>${formatPrice(floor)}</b></div>
-      <div>Ceiling: <b>${formatPrice(ceiling)}</b></div>
+      <div>Your Max Ceiling: <b>${formatPrice(ceiling)}</b></div>
       <div>Current Market: <b>${formatPrice(card.current_price || floor)}</b></div>
       <div style="margin-top:6px;color:#FF4444;">Listing fee: <b>${CONFIG.LISTING_COIN_FEE} PC</b> (you have ${b.coins} PC)</div>
     </div>
@@ -1005,7 +1014,7 @@ async function confirmSell(cardId) {
   const ceiling = invItem?.ceiling_price || (floor * 10);
 
   if (!price || price < floor || price > ceiling) {
-    showToast('Price must be between ' + formatPrice(floor) + ' and ' + formatPrice(ceiling), 'error');
+    alert("SELL FAILED: Price must be between " + formatPrice(floor) + " and " + formatPrice(ceiling));
     return;
   }
 
@@ -1021,11 +1030,22 @@ async function confirmSell(cardId) {
   showLoading('Creating listing...');
   try {
     const { data, error } = await getSupabase().functions.invoke('create-listing', { body: { cardId, price } });
-    if (error || data?.error) throw new Error(data?.error || error.message);
+    
+    if (error) {
+      let actualError = error.message;
+      try {
+        const errorBody = await error.context.json();
+        actualError = errorBody.error || errorBody.message || actualError;
+      } catch (e) {}
+      throw new Error(actualError);
+    }
+    
+    if (data?.error) throw new Error(data.error);
+
     showToast('Listed successfully', 'success'); playSound('reward'); closeSellModal();
     await refreshLiveProfile(); loadInventory(); loadTrade(); loadDashboard();
   } catch (err) {
-    showToast(err.message, 'error');
+    alert("SELL FAILED: " + (err.message || 'Failed to create listing'));
   } finally {
     hideLoading();
   }
@@ -1129,7 +1149,7 @@ async function renderTradeSellListings() {
           <div class="price" style="color:#FFD700; font-weight:800;">${formatPrice(l.price)}</div>
           <div class="units" style="font-size:11px; color:#999;">${l.remaining}/${l.units} units</div>
         </div>
-        ${canCancel ? `<button class="buy-btn sell" onclick="cancelListing('${l.id}')">Cancel</button>` : `<button class="buy-btn" disabled style="background:#ccc;color:#666;font-size:11px;">1 Sold</button>`}
+        ${canCancel ? `<button class="buy-btn sell" onclick="cancelListing('${l.id}')">Cancel</button>` : `<button class="btn-buy" disabled style="background:#ccc;color:#666;font-size:11px;">1 Sold</button>`}
       </div>`;
   }).join('');
 }
@@ -1151,7 +1171,7 @@ async function buyFromTrade(listingId) {
 }
 
 async function cancelListing(listingId) {
-  if (!confirm('Cancel listing? Card returns to inventory.')) return;
+  if (!confirm('Cancel listing? \n\nWARNING: Your maximum selling price (ceiling) will be reduced by 10% as a penalty.')) return;
   showLoading('Cancelling...');
   try {
     const { data, error } = await getSupabase().functions.invoke('cancel-listing', { body: { listingId } });
@@ -1674,6 +1694,7 @@ function loadWallet() {
   const elS = document.getElementById('walletStage');
   if (elS) elS.textContent = getStageConfig(getStage()).name;
   renderBankDetails();
+  renderWithdrawalHistory();
   renderWalletHistory();
 
   const isAdmin = APP.profile?.email === 'solforeyx@gmail.com'; 
@@ -1736,6 +1757,64 @@ function renderBankDetails() {
   el.innerHTML = APP.profile?.bank_details ? `<div style="line-height:1.6;"><b>${escapeHtml(APP.profile.bank_details.bank)}</b><br/>${escapeHtml(APP.profile.bank_details.accountName)}<br/>${escapeHtml(APP.profile.bank_details.accountNumber)}</div>` : 'No bank details saved.';
 }
 
+async function renderWithdrawalHistory() {
+  let container = document.getElementById('withdrawalHistoryContainer');
+  
+  // Create the container dynamically if it doesn't exist
+  if (!container) {
+    const historyEl = document.getElementById('walletHistory');
+    if (!historyEl) return;
+    
+    // Create wrapper for My Withdrawals
+    container = document.createElement('div');
+    container.id = 'withdrawalHistoryContainer';
+    container.style.marginBottom = '20px';
+    container.innerHTML = `
+      <div style="font-size:14px; font-weight:800; margin-bottom:12px; display:flex; align-items:center; gap:8px; color:#1A1A2E;">
+        <span class="material-icons" style="color:#FFD700;">payments</span> My Withdrawals
+      </div>
+      <div id="withdrawalList" style="background:#fff; border-radius:12px; padding:12px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <div style="text-align:center; color:#999; font-size:12px;">Loading...</div>
+      </div>
+    `;
+    // Insert before the transaction history
+    historyEl.parentElement.insertBefore(container, historyEl.parentElement.firstChild);
+  }
+
+  const listEl = document.getElementById('withdrawalList');
+  if (!listEl) return;
+
+  const { data: wds } = await getSupabase().from('withdrawals')
+    .select('*')
+    .eq('user_id', APP.user.id)
+    .order('requested_at', { ascending: false })
+    .limit(5);
+
+  if (!wds || !wds.length) {
+    listEl.innerHTML = '<div style="text-align:center; color:#999; font-size:12px;">No withdrawals yet.</div>';
+    return;
+  }
+
+  listEl.innerHTML = wds.map(w => {
+    let statusColor = '#FFD700'; // Pending (Gold)
+    if (w.status === 'paid') statusColor = '#22C55E'; // Paid (Green)
+    if (w.status === 'rejected') statusColor = '#FF4444'; // Rejected (Red)
+
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #f0f0f5; padding:10px 0;">
+        <div>
+          <div style="font-weight:700; font-size:14px; color:#1A1A2E;">${formatPrice(w.amount)}</div>
+          <div style="font-size:11px; color:#999;">${new Date(w.requested_at).toLocaleDateString()}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-weight:800; font-size:12px; color:${statusColor}; text-transform:uppercase;">${w.status}</div>
+          ${w.admin_note ? `<div style="font-size:10px; color:#999; max-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(w.admin_note)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 async function renderWalletHistory() {
   const el = document.getElementById('walletHistory');
   if (!el) return;
@@ -1758,23 +1837,10 @@ async function renderWalletHistory() {
     else if (tx.type === 'coin_buy') { desc = 'Coins Purchased'; amtColor = '#FF4444'; amtStr = `-${formatPrice(tx.amount)}`; }
     else if (tx.type === 'daily_combo') { desc = 'Daily Combo Reward'; amtColor = '#22C55E'; amtStr = `+${formatPrice(tx.amount)}`; }
     
-    // ✅ Handle Withdrawals properly
-    else if (tx.type === 'withdraw') { 
-      const status = tx.metadata?.status || 'pending';
-      if (status === 'rejected') {
-        desc = `Withdrawal Rejected (Refunded)`; 
-        amtColor = '#22C55E'; 
-        amtStr = `+${formatPrice(tx.amount)}`;
-      } else if (status === 'paid') {
-        desc = `Withdrawal Paid`; 
-        amtColor = '#FF4444'; 
-        amtStr = `-${formatPrice(tx.amount)}`;
-      } else {
-        desc = `Withdrawal Pending`; 
-        amtColor = '#FFD700'; 
-        amtStr = `-${formatPrice(tx.amount)}`;
-      }
-    }
+    // Hide the raw 'withdraw' and 'admin_adjust' (refund) from the main list because they are in the box above now
+    else if (tx.type === 'withdraw') { return ''; }
+    else if (tx.type === 'admin_adjust' && tx.metadata?.reason === 'withdrawal_rejected') { return ''; }
+
     else if (tx.type === 'admin_adjust') { 
         desc = `Admin: ${tx.metadata?.reason || 'Adjustment'}`; 
         amtColor = '#666'; 
